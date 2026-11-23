@@ -1,0 +1,70 @@
+local test = dofile("tests/support.lua")
+
+test.run("base-tools.preview", function()
+  local api = vim.api
+  local float = require("base_tools.float")
+  local preview = require("base_tools.preview")
+  local eq = test.eq
+
+  local config = { relative = "editor", row = 1, col = 2, width = 10, height = 3, border = "single" }
+  local function anchored_to(win)
+    return vim.tbl_filter(function(candidate)
+      return api.nvim_win_get_config(candidate).win == win
+    end, api.nvim_list_wins())
+  end
+
+  local view = preview.open({ config = config, lines = { "short" } })
+  eq({ "short" }, api.nvim_buf_get_lines(view.buf, 0, -1, false))
+  eq(nil, view:position())
+  view:set_lines({ string.rep("x", 80) })
+  eq(8, view:position().total)
+  eq(0, #anchored_to(view.win))
+  local owned = view.buf
+  view:close()
+  eq(false, api.nvim_buf_is_valid(owned))
+  eq(false, view:scroll(1))
+
+  local borrowed = float.scratch()
+  view = preview.open({
+    buf = borrowed,
+    config = config,
+    lines = { string.rep("x", 80) },
+    scrollbar = { thumb_highlight = "Keyword" },
+  })
+  local win = view.win
+  local children = anchored_to(win)
+  eq(1, #children)
+  eq(0, view:position().progress)
+
+  local ok, position = view:scroll(20)
+  assert(ok)
+  eq(1, position.progress)
+  local bottom = api.nvim_win_call(win, vim.fn.winsaveview)
+  eq(50, bottom.skipcol)
+  view:scroll(2)
+  eq(bottom, api.nvim_win_call(win, vim.fn.winsaveview))
+  view:scroll(-100)
+  eq(0, view:position().progress)
+  view:update({ height = 8 })
+  eq(0, #anchored_to(win))
+  view:update({ height = 3 })
+  eq(1, #anchored_to(win))
+  view:set_lines({ "fits" })
+  eq(0, #anchored_to(win))
+  view:set_lines({ string.rep("x", 80) })
+  children = anchored_to(win)
+  eq(1, #children)
+  assert(view:set_scrollbar(false))
+  eq(0, #anchored_to(win))
+  assert(view:set_scrollbar(true))
+  children = anchored_to(win)
+  eq(1, #children)
+  eq(win, view.win)
+  api.nvim_win_close(win, true)
+  eq(false, api.nvim_win_is_valid(children[1]))
+  eq(false, view:valid())
+  eq(nil, view:position())
+  view:close()
+  eq(true, api.nvim_buf_is_valid(borrowed))
+  api.nvim_buf_delete(borrowed, { force = true })
+end)

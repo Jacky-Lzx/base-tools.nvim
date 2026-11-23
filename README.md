@@ -55,6 +55,59 @@ A supplied buffer remains under the caller's ownership and follows its own
 `bufhidden` option. `float.scratch(buf_options?)` creates an unlisted scratch
 buffer with `bufhidden = "hide"` by default for callers that reuse buffers.
 
+## Previews
+
+```lua
+local preview = require("base_tools.preview")
+local view = preview.open({
+  config = { relative = "editor", row = 2, col = 2, width = 24, height = 5 },
+  lines = { "A document" },
+  scrollbar = true,
+})
+view:set_lines({ "New content" })
+local _, position = view:scroll(4)
+view:close()
+```
+
+`preview.open(opts)` accepts the same window and buffer options as
+`float.open`, optional initial `lines`, and `scrollbar = true` or a table of
+scrollbar highlight options. Previews use wrapping and smooth scrolling by
+default. `view:set_lines(lines)` replaces the contents, `view:update(config)`
+changes the window geometry, and `view:scroll(rows)` moves the viewport
+without scrolling beyond its last full page. Positive rows scroll down.
+All three refresh an enabled scrollbar. External window and buffer changes
+also refresh it during redraw. Use `view:set_scrollbar(opts)` to configure
+or disable the scrollbar on an existing preview.
+
+`view:position()` returns the current scroll position when the content
+overflows. `view:refresh()` also refreshes the scrollbar and returns that
+position. Use the progress value to display a custom label. Closing the
+preview releases its auxiliary window and any buffer it owns.
+
+## Scrollbars
+
+```lua
+local scrollbar = require("base_tools.scrollbar")
+local bar = scrollbar.new({ track_highlight = "FloatBorder", thumb_highlight = "Title" })
+local position = bar:update(win)
+if position then
+  local percent = math.floor(position.progress * 100)
+end
+bar:close()
+```
+
+`scrollbar.position(win)` returns `total`, `visible`, `offset`, and `progress`
+for a window with content below or above the viewport. Sizes and offsets are
+measured in screen rows, including wrapping and concealment. `progress` runs
+from 0 at the top to 1 at the bottom.
+
+`bar:update(win)` returns the same position and draws a one-column scrollbar
+over the right border or in the gutter beside a borderless window. Call it
+after scrolling, changing the content, or resizing the window. The scrollbar
+closes automatically when the target window closes. A call when the content
+fits or `bar:close()` also releases the scrollbar window and its buffer.
+Position labels and key mappings are handled by the caller.
+
 ## Development
 
 Run from the repository root:
@@ -63,9 +116,11 @@ Run from the repository root:
 nvim --headless -u NONE -i NONE -n -l tests/test.lua
 ```
 
-Run either module on its own with the corresponding test file.
+Run each module on its own with the corresponding test file.
 
 ```sh
 nvim --headless -u NONE -i NONE -n -l tests/text.lua
 nvim --headless -u NONE -i NONE -n -l tests/float.lua
+nvim --headless -u NONE -i NONE -n -l tests/scrollbar.lua
+nvim --headless -u NONE -i NONE -n -l tests/preview.lua
 ```
