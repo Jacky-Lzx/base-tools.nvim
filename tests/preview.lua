@@ -173,3 +173,29 @@ test.run("base-tools.preview content update", function()
   view:close()
   eq(false, view:set_content({ lines = lines }))
 end)
+
+test.run("base-tools.preview fits its height", function()
+  local api = vim.api
+  local eq = test.eq
+  local view = require("base_tools.preview").open({
+    config = { relative = "editor", row = 1, col = 2, width = 10, height = 1, border = "single" },
+    lines = { "fence", string.rep("x", 30), "tail" },
+    scrollbar = true,
+  })
+  eq(3, view:fit_height({ max_height = 3 }))
+  eq(3, api.nvim_win_get_height(view.win))
+  eq(5, view:position().total)
+  eq(5, view:fit_height())
+  eq(nil, view:position())
+
+  vim.wo[view.win].conceallevel = 2
+  vim.wo[view.win].concealcursor = "nvic"
+  api.nvim_buf_set_extmark(view.buf, api.nvim_create_namespace("preview-fit-test"), 0, 0, {
+    conceal_lines = "",
+  })
+  eq(4, view:fit_height())
+  view:set_lines({})
+  eq(1, view:fit_height())
+  view:close()
+  eq(nil, view:fit_height())
+end)

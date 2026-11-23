@@ -176,6 +176,22 @@ function Preview:update(config)
   return true
 end
 
+--- Fit the window to its rendered contents at the current width.
+---@param opts? { max_height?: integer }
+---@return integer? height The resulting window height, or nil if closed.
+function Preview:fit_height(opts)
+  if not self:valid() then
+    return
+  end
+  local win = self.win
+  local rows = api.nvim_win_text_height(win, {}).all
+  local height = math.max(1, math.min(rows, opts and opts.max_height or rows))
+  if height ~= api.nvim_win_get_height(win) then
+    self:update({ height = height })
+  end
+  return api.nvim_win_get_height(win)
+end
+
 ---@param labels base_tools.BorderLabels
 ---@return boolean
 function Preview:set_border_labels(labels)

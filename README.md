@@ -124,6 +124,11 @@ contents, `view:update(config)` changes the window geometry, and
 `view:scroll(rows)` moves the viewport without scrolling beyond its last full
 page. Positive rows scroll down.
 
+`view:fit_height({ max_height = 12 })` fits the height at the current width,
+accounting for wrapping and concealed lines. It returns the resulting window
+height, or `nil` if the preview is closed. The height is at least one row.
+Call it again after changing the width or contents when you want to refit.
+
 Use `view:set_content({ lines = lines, border_labels = labels })` to replace
 the contents and update selected border slots in one call. For example, when
 switching to another file:
