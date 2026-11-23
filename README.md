@@ -62,18 +62,19 @@ borders of a float:
 
 ```lua
 local float = require("base_tools.float")
+local label = require("base_tools.label")
 local view = float.open({
   config = {
     relative = "editor", row = 2, col = 2, width = 48, height = 8, border = "rounded",
   },
   border_labels = {
     top = {
-      left = { kind = "filename", value = "lua/base_tools/float.lua" },
+      left = label.filename("lua/base_tools/float.lua"),
       center = " Lua ",
       right = " LuaLS ",
     },
     bottom = {
-      left = { kind = "path", value = "lua/base_tools/float.lua", highlight = "Comment" },
+      left = label.path("lua/base_tools/float.lua", { highlight = "Comment" }),
       right = { { " 42% ", "DiagnosticInfo" } },
     },
   },
@@ -87,7 +88,9 @@ or a file label with `kind`, `value`, and an optional `highlight`.
 Use `kind = "path"` to display the supplied path, or `kind = "filename"`
 to display its last component. Path labels shorten from the start to keep
 the filename visible on narrow windows. Both kinds show control characters
-in printable form and work with `view:set_border_labels()`.
+in printable form and work with `view:set_border_labels()`. The
+`label.path(path, opts?)` and `label.filename(path, opts?)` constructors
+return these tables and accept an optional `opts.highlight`.
 
 Omitted slots retain their values. Pass `false`, an empty string, an empty list,
 or a file label with an empty `value` to clear a slot. Pass `top = false` or `bottom = false` to
@@ -128,12 +131,13 @@ overflows. `view:refresh()` also refreshes the scrollbar and returns that
 position. Use the progress value to display a custom label. Closing the
 preview releases its auxiliary window and any buffer it owns.
 
-A preview label can also use `kind = "scroll_percent"` with an optional
-`highlight`, for example:
+A preview label can also use `label.scroll_percent(opts?)`, which returns
+a `{ kind = "scroll_percent", highlight = ... }` table:
 
 ```lua
-border_labels = {
-  bottom = { right = { kind = "scroll_percent", highlight = "Comment" } },
+local label = require("base_tools.label")
+local border_labels = {
+  bottom = { right = label.scroll_percent({ highlight = "Comment" }) },
 }
 ```
 

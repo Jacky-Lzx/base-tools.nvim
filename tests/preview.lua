@@ -73,9 +73,10 @@ test.run("base-tools.preview scroll labels", function()
   local api = vim.api
   local eq = test.eq
   local lines = vim.split(string.rep("long line\n", 20), "\n", { trimempty = true })
+  local labels = require("base_tools.label")
   local initial = {
-    top = { center = { kind = "scroll_percent" } },
-    bottom = { left = "Doc", right = { kind = "scroll_percent", highlight = "WarningMsg" } },
+    top = { center = labels.scroll_percent() },
+    bottom = { left = "Doc", right = labels.scroll_percent({ highlight = "WarningMsg" }) },
   }
   local view = require("base_tools.preview").open({
     config = {

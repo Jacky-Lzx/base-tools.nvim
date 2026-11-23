@@ -3,6 +3,7 @@ local test = dofile("tests/support.lua")
 test.run("base-tools.border_labels", function()
   local api = vim.api
   local float = require("base_tools.float")
+  local label = require("base_tools.label")
   local eq = test.eq
 
   local function text(parts)
@@ -90,8 +91,8 @@ test.run("base-tools.border_labels", function()
     config = { relative = "editor", row = 1, col = 2, width = 10, height = 3, border = "single" },
     lines = { "text" },
     border_labels = {
-      top = { left = { kind = "filename", value = "lua/文.lua", highlight = "Title" } },
-      bottom = { left = { kind = "path", value = "lua/文.lua", highlight = "Comment" } },
+      top = { left = label.filename("lua/文.lua", { highlight = "Title" }) },
+      bottom = { left = label.path("lua/文.lua", { highlight = "Comment" }) },
     },
   })
   local function preview_config()
