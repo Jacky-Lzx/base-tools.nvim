@@ -2,10 +2,19 @@ require("base_tools")
 local M = {}
 local api = vim.api
 
+---@class base_tools.FloatOptions
+---@field config vim.api.keyset.win_config
+---@field buf? integer
+---@field enter? boolean
+---@field buf_options? table<string, any>
+---@field win_options? table<string, any>
+---@field border_labels? base_tools.BorderLabels
+
 ---@class base_tools.Float
 ---@field win? integer
 ---@field buf integer
 ---@field private owned boolean
+---@field private border_labels? table
 local Float = {}
 Float.__index = Float
 
@@ -43,11 +52,30 @@ function Float:update(config)
     return false
   end
   api.nvim_win_set_config(self.win, config)
+  if self.border_labels then
+    self.border_labels:refresh(config)
+  end
+  return true
+end
+
+--- Update the given border slots. Pass false to clear a slot or a whole edge.
+---@param labels base_tools.BorderLabels
+---@return boolean
+function Float:set_border_labels(labels)
+  if not self:valid() then
+    return false
+  end
+  local layout = self.border_labels or require("base_tools.border_labels").new(self.win)
+  self.border_labels = layout:set(labels) and layout or nil
   return true
 end
 
 --- Close the float and release its buffer when this handle owns it.
 function Float:close()
+  if self.border_labels then
+    self.border_labels:close()
+    self.border_labels = nil
+  end
   local win, owned = self.win, self.owned
   self.win, self.owned = nil, false
   if win and api.nvim_win_is_valid(win) then
@@ -59,7 +87,7 @@ function Float:close()
 end
 
 --- Open a float with an owned scratch buffer or a buffer supplied by the caller.
----@param opts { config: vim.api.keyset.win_config, buf?: integer, enter?: boolean, buf_options?: table<string, any>, win_options?: table<string, any> }
+---@param opts base_tools.FloatOptions
 ---@return base_tools.Float
 function M.open(opts)
   local owned = opts.buf == nil
@@ -70,6 +98,9 @@ function M.open(opts)
   local ok, err = pcall(function()
     view.win = api.nvim_open_win(view.buf, opts.enter == true, opts.config)
     set_options(vim.wo[view.win], opts.win_options)
+    if opts.border_labels then
+      view:set_border_labels(opts.border_labels)
+    end
   end)
   if not ok then
     view:close()

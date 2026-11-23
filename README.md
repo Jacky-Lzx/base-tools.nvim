@@ -55,6 +55,49 @@ A supplied buffer remains under the caller's ownership and follows its own
 `bufhidden` option. `float.scratch(buf_options?)` creates an unlisted scratch
 buffer with `bufhidden = "hide"` by default for callers that reuse buffers.
 
+### Border labels
+
+Set any of the left, center, and right positions on the top and bottom
+borders of a float:
+
+```lua
+local float = require("base_tools.float")
+local view = float.open({
+  config = {
+    relative = "editor", row = 2, col = 2, width = 48, height = 8, border = "rounded",
+  },
+  border_labels = {
+    top = {
+      left = { kind = "filename", value = "lua/base_tools/float.lua" },
+      center = " Lua ",
+      right = " LuaLS ",
+    },
+    bottom = {
+      left = { kind = "path", value = "lua/base_tools/float.lua", highlight = "Comment" },
+      right = { { " 42% ", "DiagnosticInfo" } },
+    },
+  },
+})
+view:set_border_labels({ bottom = { right = " 100% " } })
+view:set_border_labels({ top = { center = false } })
+```
+
+A slot accepts a single-line string, Neovim-style `{text, highlight}` chunks,
+or a file label with `kind`, `value`, and an optional `highlight`.
+Use `kind = "path"` to display the supplied path, or `kind = "filename"`
+to display its last component. Path labels shorten from the start to keep
+the filename visible on narrow windows. Both kinds show control characters
+in printable form and work with `view:set_border_labels()`.
+
+Omitted slots retain their values. Pass `false`, an empty string, an empty list,
+or a file label with an empty `value` to clear a slot. Pass `top = false` or `bottom = false` to
+clear a whole edge. Clearing the last slot restores that edge's native
+title or footer, if configured.
+
+Labels track window width in display cells. Left and right take precedence
+when space is tight. The center stays centered and may be shortened or
+hidden. An edge needs a visible horizontal border to display its labels.
+
 ## Previews
 
 ```lua
@@ -71,7 +114,8 @@ view:close()
 
 `preview.open(opts)` accepts the same window and buffer options as
 `float.open`, optional initial `lines`, and `scrollbar = true` or a table of
-scrollbar highlight options. Previews use wrapping and smooth scrolling by
+scrollbar highlight options. The float's `border_labels` option and
+`view:set_border_labels()` are also available on previews. Previews use wrapping and smooth scrolling by
 default. `view:set_lines(lines)` replaces the contents, `view:update(config)`
 changes the window geometry, and `view:scroll(rows)` moves the viewport
 without scrolling beyond its last full page. Positive rows scroll down.
@@ -123,4 +167,5 @@ nvim --headless -u NONE -i NONE -n -l tests/text.lua
 nvim --headless -u NONE -i NONE -n -l tests/float.lua
 nvim --headless -u NONE -i NONE -n -l tests/scrollbar.lua
 nvim --headless -u NONE -i NONE -n -l tests/preview.lua
+nvim --headless -u NONE -i NONE -n -l tests/border_labels.lua
 ```

@@ -5,14 +5,9 @@ local ns = api.nvim_create_namespace("base-tools-preview")
 local previews = {}
 local M = {}
 
----@class base_tools.PreviewOptions
----@field config vim.api.keyset.win_config
+---@class base_tools.PreviewOptions: base_tools.FloatOptions
 ---@field lines? string[] Initial buffer contents.
 ---@field scrollbar? boolean|base_tools.ScrollbarOptions Show a scrollbar on overflow.
----@field buf? integer Existing buffer to display.
----@field enter? boolean
----@field buf_options? table<string, any>
----@field win_options? table<string, any>
 
 ---@class base_tools.Preview
 ---@field win? integer
@@ -64,6 +59,12 @@ function Preview:update(config)
   end
   self:refresh()
   return true
+end
+
+---@param labels base_tools.BorderLabels
+---@return boolean
+function Preview:set_border_labels(labels)
+  return self.float:set_border_labels(labels)
 end
 
 --- Scroll by screen rows when wrapping is enabled. Stop at the last full viewport.
@@ -163,6 +164,7 @@ function M.open(opts)
     buf = opts.buf,
     enter = opts.enter,
     buf_options = opts.buf_options,
+    border_labels = opts.border_labels,
     win_options = vim.tbl_extend("force", { wrap = true, smoothscroll = true }, opts.win_options or {}),
   })
   local view = setmetatable({ float = target, win = target.win, buf = target.buf }, Preview)
