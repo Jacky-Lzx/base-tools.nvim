@@ -12,6 +12,7 @@ local M = {}
 
 ---@class base_tools.PreviewContent
 ---@field lines string[] Replacement buffer contents.
+---@field scroll? "keep"|"top" Keep the viewport or reset it to the top.
 ---@field language? string|false Set a Tree-sitter language, or clear the preview's highlighter.
 ---@field border_labels? base_tools.BorderLabels Labels to update with the contents.
 
@@ -169,12 +170,55 @@ local function highlight(self, language)
   end
 end
 
+local function remaining_rows(win, view)
+  return api.nvim_win_text_height(win, {
+    start_row = view.topline - 1,
+    start_vcol = view.skipcol,
+  }).all
+end
+
+local function restore_scroll(win, saved)
+  api.nvim_win_call(win, function()
+    if not saved then
+      vim.fn.winrestview({
+        topline = 1,
+        lnum = 1,
+        col = 0,
+        leftcol = 0,
+        skipcol = 0,
+        coladd = 0,
+        curswant = 0,
+        topfill = 0,
+      })
+      return
+    end
+    vim.fn.winrestview(saved)
+    local view = vim.fn.winsaveview()
+    if view.skipcol > 0 then
+      local row = view.topline - 1
+      if api.nvim_win_text_height(win, { start_row = row, end_row = row, start_vcol = view.skipcol }).all == 0 then
+        view.skipcol = 0
+        vim.fn.winrestview(view)
+      end
+    end
+    local missing = api.nvim_win_get_height(win) - remaining_rows(win, view)
+    if missing > 0 then
+      vim.cmd("normal! " .. missing .. "\25")
+    end
+  end)
+end
+
 local function apply_content(self, content)
+  local win = self.win
+  local saved = content.scroll == "keep" and api.nvim_win_call(win, vim.fn.winsaveview) or nil
   if content.lines then
     api.nvim_buf_set_lines(self.buf, 0, -1, false, content.lines)
   end
   if content.language ~= nil then
     highlight(self, content.language)
+  end
+  if content.scroll then
+    restore_scroll(win, saved)
   end
   refresh(self, content.border_labels)
   update_observation(self)
@@ -247,11 +291,7 @@ function Preview:scroll(rows)
   api.nvim_win_call(win, function()
     local count = math.abs(rows)
     if rows > 0 then
-      local view = vim.fn.winsaveview()
-      local remaining = api.nvim_win_text_height(win, {
-        start_row = view.topline - 1,
-        start_vcol = view.skipcol,
-      }).all
+      local remaining = remaining_rows(win, vim.fn.winsaveview())
       count = math.min(count, remaining - api.nvim_win_get_height(win))
     end
     if count > 0 then

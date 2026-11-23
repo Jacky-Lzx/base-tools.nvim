@@ -244,3 +244,40 @@ test.run("base-tools.preview language highlighting", function()
   treesitter.stop(buf)
   api.nvim_buf_delete(buf, { force = true })
 end)
+
+test.run("base-tools.preview content scroll policies", function()
+  local api = vim.api
+  local eq = test.eq
+  local lines = vim.split(string.rep("original\n", 20), "\n", { trimempty = true })
+  local view = require("base_tools.preview").open({
+    config = { relative = "editor", row = 1, col = 2, width = 10, height = 3, border = "single" },
+    lines = lines,
+  })
+  local function saved()
+    return api.nvim_win_call(view.win, vim.fn.winsaveview)
+  end
+
+  view:scroll(9)
+  eq(10, saved().topline)
+  local before = saved()
+  view:set_content({ lines = vim.tbl_map(string.upper, lines), scroll = "keep" })
+  eq(before, saved())
+  view:set_content({ lines = { "one", "two", "three", "four", "five" }, scroll = "keep" })
+  eq(3, saved().topline)
+  eq(1, view:position().progress)
+
+  view:set_content({ lines = { string.rep("x", 80) }, scroll = "top" })
+  view:scroll(5)
+  eq(50, saved().skipcol)
+  view:set_content({ lines = { string.rep("y", 80) }, scroll = "keep" })
+  eq(50, saved().skipcol)
+  view:set_content({ lines = { "short", "two", "three", "four" }, scroll = "keep" })
+  eq(0, saved().skipcol)
+  eq(1, saved().topline)
+  view:scroll(1)
+  view:set_content({ lines = lines, scroll = "top" })
+  eq(1, saved().topline)
+  eq({ 1, 0 }, api.nvim_win_get_cursor(view.win))
+  eq(0, view:position().progress)
+  view:close()
+end)

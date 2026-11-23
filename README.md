@@ -147,6 +147,11 @@ All three refresh an enabled scrollbar. External window and buffer changes
 also refresh it during redraw. Use `view:set_scrollbar(opts)` to configure
 or disable the scrollbar on an existing preview.
 
+Set `scroll = "top"` on `view:set_content()` to reset the cursor and viewport
+when switching items. Use `scroll = "keep"` to keep the current row and wrapped
+row offset where possible. If the replacement is shorter, the viewport adjusts
+to the new content. Omitting `scroll` leaves placement to Neovim.
+
 Pass `language = "lua"` to `preview.open()` or `view:set_content()` to
 enable Tree-sitter highlighting. Omit `language` to keep the current
 highlighter, or use `language = false` to clear highlighting started by the
