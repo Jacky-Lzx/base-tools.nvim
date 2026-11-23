@@ -226,6 +226,15 @@ closes automatically when the target window closes. A call when the content
 fits or `bar:close()` also releases the scrollbar window and its buffer.
 Position labels and key mappings are handled by the caller.
 
+## Markdown
+
+Call `require("base_tools.markdown").conceal_fences(buf, ns)` to hide
+whole Markdown fence rows using extmarks in a caller-owned namespace.
+The original text remains available to parsers and for copying. The helper
+returns two 1-based sets of rows, one for hidden delimiters and one for all
+lines in fenced blocks. When the Markdown parser is unavailable, it
+recognizes simple backtick and tilde fences.
+
 ## Development
 
 Run from the repository root:
