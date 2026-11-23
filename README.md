@@ -128,6 +128,19 @@ overflows. `view:refresh()` also refreshes the scrollbar and returns that
 position. Use the progress value to display a custom label. Closing the
 preview releases its auxiliary window and any buffer it owns.
 
+A preview label can also use `kind = "scroll_percent"` with an optional
+`highlight`, for example:
+
+```lua
+border_labels = {
+  bottom = { right = { kind = "scroll_percent", highlight = "Comment" } },
+}
+```
+
+The percentage updates when the preview scrolls, changes size, or receives
+new content. It is visible on overflow and works independently of the
+`scrollbar` option.
+
 ## Scrollbars
 
 ```lua

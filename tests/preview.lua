@@ -68,3 +68,70 @@ test.run("base-tools.preview", function()
   eq(true, api.nvim_buf_is_valid(borrowed))
   api.nvim_buf_delete(borrowed, { force = true })
 end)
+
+test.run("base-tools.preview scroll labels", function()
+  local api = vim.api
+  local eq = test.eq
+  local lines = vim.split(string.rep("long line\n", 20), "\n", { trimempty = true })
+  local initial = {
+    top = { center = { kind = "scroll_percent" } },
+    bottom = { left = "Doc", right = { kind = "scroll_percent", highlight = "WarningMsg" } },
+  }
+  local view = require("base_tools.preview").open({
+    config = {
+      relative = "editor",
+      row = 1,
+      col = 2,
+      width = 16,
+      height = 3,
+      border = "single",
+      title = "native",
+    },
+    lines = lines,
+    border_labels = initial,
+  })
+  local function label(edge)
+    local value = api.nvim_win_get_config(view.win)[edge]
+    if type(value) ~= "table" then
+      return value
+    end
+    return table.concat(vim.tbl_map(function(part)
+      return part[1]
+    end, value))
+  end
+
+  eq("────── 0% ──────", label("title"))
+  eq("Doc───────── 0% ", label("footer"))
+  view:scroll(100)
+  eq("───── 100% ─────", label("title"))
+  eq("Doc─────── 100% ", label("footer"))
+  eq({ " 100% ", "WarningMsg" }, api.nvim_win_get_config(view.win).footer[3])
+
+  view:update({ height = 20 })
+  eq("native", label("title"))
+  eq("Doc─────────────", label("footer"))
+  view:update({ height = 3 })
+  assert(label("title"):find("%%", 1))
+  view:set_lines({ "fits" })
+  eq("native", label("title"))
+  view:set_lines(lines)
+  eq("────── 0% ──────", label("title"))
+
+  view:set_scrollbar(true)
+  view:set_scrollbar(false)
+  view:set_border_labels({ top = false, bottom = { right = "Ready" } })
+  view:scroll(100)
+  eq("native", label("title"))
+  eq("Doc────────Ready", label("footer"))
+  eq({ kind = "scroll_percent", highlight = "WarningMsg" }, initial.bottom.right)
+
+  view:set_border_labels({ bottom = { right = { kind = "scroll_percent" } } })
+  eq("Doc─────── 100% ", label("footer"))
+  view:set_border_labels({ bottom = { right = false } })
+  view:scroll(-100)
+  eq("Doc─────────────", label("footer"))
+
+  api.nvim_win_close(view.win, true)
+  eq(nil, view:refresh())
+  eq(false, view:set_border_labels({ top = false }))
+end)

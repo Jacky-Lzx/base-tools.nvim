@@ -16,6 +16,8 @@ local M = {}
 ---@field private scrollbar? base_tools.Scrollbar
 ---@field private close_event? integer
 ---@field private refresh_pending? boolean
+---@field private scroll_labels table<string, table<string, base_tools.ScrollPercentBorderLabel>>
+---@field private scroll_percent? integer
 local Preview = {}
 Preview.__index = Preview
 
@@ -29,13 +31,108 @@ function Preview:position()
   return self.win and scrollbar.position(self.win)
 end
 
---- Refresh the scrollbar and return the current position.
+local function scroll_label(label, percent)
+  return percent and { { (" %d%% "):format(percent), label.highlight } } or false
+end
+
+local function render_labels(self, labels, percent)
+  local changed = percent ~= self.scroll_percent
+  if not labels and (not changed or not next(self.scroll_labels)) then
+    return
+  end
+
+  local patch = {}
+  for _, edge in ipairs({ "top", "bottom" }) do
+    local updates = labels and labels[edge]
+    local tracked = self.scroll_labels[edge]
+    if updates == false then
+      self.scroll_labels[edge] = nil
+      patch[edge] = false
+    elseif updates or tracked then
+      tracked = tracked or {}
+      local slots = {}
+      for _, align in ipairs({ "left", "center", "right" }) do
+        local label = updates and updates[align]
+        if label ~= nil then
+          if type(label) == "table" and label.kind == "scroll_percent" then
+            tracked[align] = { kind = "scroll_percent", highlight = label.highlight }
+            slots[align] = scroll_label(label, percent)
+          else
+            tracked[align] = nil
+            slots[align] = label
+          end
+        elseif changed and tracked[align] then
+          slots[align] = scroll_label(tracked[align], percent)
+        end
+      end
+      self.scroll_labels[edge] = next(tracked) and tracked or nil
+      if next(slots) then
+        patch[edge] = slots
+      end
+    end
+  end
+
+  if next(patch) then
+    self.float:set_border_labels(patch)
+  end
+  self.scroll_percent = percent
+end
+
+local function unobserve(win)
+  if previews[win] then
+    previews[win] = nil
+    if not next(previews) then
+      api.nvim_set_decoration_provider(ns, {})
+    end
+  end
+end
+
+-- Redraw also covers scrolling and edits performed outside the preview API.
+-- Schedule window changes outside the redraw lock.
+local function update_observation(self)
+  local win = self.win
+  if not self.scrollbar and not next(self.scroll_labels) then
+    unobserve(win)
+    return
+  end
+  if not next(previews) then
+    api.nvim_set_decoration_provider(ns, {
+      on_win = function(_, target)
+        local view = previews[target]
+        if view and not view.refresh_pending then
+          view.refresh_pending = true
+          vim.schedule(function()
+            view.refresh_pending = false
+            if previews[target] == view then
+              view:refresh()
+            end
+          end)
+        end
+        return false
+      end,
+    })
+  end
+  previews[win] = self
+end
+
+local function refresh(self, labels)
+  local position
+  if self.scrollbar then
+    position = self.scrollbar:update(self.win)
+  else
+    position = self:position()
+  end
+  local percent = position and math.floor(position.progress * 100)
+  render_labels(self, labels, percent)
+  return position
+end
+
+--- Refresh the scrollbar and scroll labels, and return the current position.
 ---@return base_tools.ScrollPosition?
 function Preview:refresh()
-  if self.scrollbar and self:valid() then
-    return self.scrollbar:update(self.win)
+  if self:valid() then
+    return refresh(self)
   end
-  return self:position()
 end
 
 --- Replace the contents of the preview buffer.
@@ -64,7 +161,12 @@ end
 ---@param labels base_tools.BorderLabels
 ---@return boolean
 function Preview:set_border_labels(labels)
-  return self.float:set_border_labels(labels)
+  if not self:valid() then
+    return false
+  end
+  refresh(self, labels)
+  update_observation(self)
+  return true
 end
 
 --- Scroll by screen rows when wrapping is enabled. Stop at the last full viewport.
@@ -97,10 +199,6 @@ local function close_scrollbar(self)
   if self.scrollbar then
     self.scrollbar:close()
     self.scrollbar = nil
-    previews[self.win] = nil
-    if not next(previews) then
-      api.nvim_set_decoration_provider(ns, {})
-    end
   end
 end
 
@@ -111,33 +209,11 @@ function Preview:close()
     self.close_event = nil
   end
   if self.win then
+    unobserve(self.win)
     close_scrollbar(self)
     self.win = nil
   end
   self.float:close()
-end
-
---- Refresh after redraw so external scrolling and edits on unfocused previews
---- also update the thumb. Schedule window changes outside the redraw lock.
-local function observe(self, win)
-  if not next(previews) then
-    api.nvim_set_decoration_provider(ns, {
-      on_win = function(_, target)
-        local view = previews[target]
-        if view and not view.refresh_pending then
-          view.refresh_pending = true
-          vim.schedule(function()
-            view.refresh_pending = false
-            if previews[target] == view then
-              view:refresh()
-            end
-          end)
-        end
-        return false
-      end,
-    })
-  end
-  previews[win] = self
 end
 
 --- Configure or disable the scrollbar for the existing preview window.
@@ -150,9 +226,9 @@ function Preview:set_scrollbar(opts)
   close_scrollbar(self)
   if opts then
     self.scrollbar = scrollbar.new(type(opts) == "table" and opts or nil)
-    observe(self, self.win)
     self:refresh()
   end
+  update_observation(self)
   return true
 end
 
@@ -164,10 +240,9 @@ function M.open(opts)
     buf = opts.buf,
     enter = opts.enter,
     buf_options = opts.buf_options,
-    border_labels = opts.border_labels,
     win_options = vim.tbl_extend("force", { wrap = true, smoothscroll = true }, opts.win_options or {}),
   })
-  local view = setmetatable({ float = target, win = target.win, buf = target.buf }, Preview)
+  local view = setmetatable({ float = target, win = target.win, buf = target.buf, scroll_labels = {} }, Preview)
   local ok, err = pcall(function()
     local win = target.win
     view.close_event = api.nvim_create_autocmd("WinClosed", {
@@ -175,12 +250,16 @@ function M.open(opts)
       once = true,
       callback = function()
         view.close_event = nil
+        unobserve(win)
         close_scrollbar(view)
         view.win = nil
       end,
     })
     if opts.lines then
       view:set_lines(opts.lines)
+    end
+    if opts.border_labels then
+      view:set_border_labels(opts.border_labels)
     end
     if opts.scrollbar then
       view:set_scrollbar(opts.scrollbar)

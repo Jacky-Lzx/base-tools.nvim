@@ -9,7 +9,12 @@ local M = {}
 ---@field value string Path to display.
 ---@field highlight? string
 
----@alias base_tools.BorderLabel string|[string, string?][]|base_tools.FileBorderLabel
+---@class base_tools.ScrollPercentBorderLabel
+---@field kind "scroll_percent"
+---@field highlight? string
+
+--- Scroll percentages are rendered by previews.
+---@alias base_tools.BorderLabel string|[string, string?][]|base_tools.FileBorderLabel|base_tools.ScrollPercentBorderLabel
 
 ---@class base_tools.BorderLabelEdge
 ---@field left? base_tools.BorderLabel|false
@@ -36,7 +41,7 @@ local function normalize(label, highlight)
   local clip_side
   if type(label) == "string" then
     label = { { label } }
-  elseif label.kind then
+  elseif label.kind == "path" or label.kind == "filename" then
     local value = label.value
     if label.kind == "filename" then
       value = vim.fs.basename(value)
