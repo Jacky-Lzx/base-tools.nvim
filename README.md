@@ -127,7 +127,9 @@ page. Positive rows scroll down.
 `view:fit_height({ max_height = 12 })` fits the height at the current width,
 accounting for wrapping and concealed lines. It returns the resulting window
 height, or `nil` if the preview is closed. The height is at least one row.
-Call it again after changing the width or contents when you want to refit.
+Call it again after changing the width or contents when you want to refit. Use
+`view:content_height({ max_height = 12 })` to measure the same height without
+resizing, then include that height in an update alongside the window position.
 
 Use `view:set_content({ lines = lines, border_labels = labels })` to replace
 the contents and update selected border slots in one call. For example, when

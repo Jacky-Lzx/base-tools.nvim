@@ -291,20 +291,29 @@ function Preview:update(config)
   return true
 end
 
+--- Measure rendered content at the current width.
+---@param opts? { max_height?: integer }
+---@return integer? height At least one row, or nil if closed.
+function Preview:content_height(opts)
+  if not self:valid() then
+    return
+  end
+  local rows = api.nvim_win_text_height(self.win, {}).all
+  return math.max(1, math.min(rows, opts and opts.max_height or rows))
+end
+
 --- Fit the window to its rendered contents at the current width.
 ---@param opts? { max_height?: integer }
 ---@return integer? height The resulting window height, or nil if closed.
 function Preview:fit_height(opts)
-  if not self:valid() then
+  local height = self:content_height(opts)
+  if not height then
     return
   end
-  local win = self.win
-  local rows = api.nvim_win_text_height(win, {}).all
-  local height = math.max(1, math.min(rows, opts and opts.max_height or rows))
-  if height ~= api.nvim_win_get_height(win) then
+  if height ~= api.nvim_win_get_height(self.win) then
     self:update({ height = height })
   end
-  return api.nvim_win_get_height(win)
+  return api.nvim_win_get_height(self.win)
 end
 
 ---@param labels base_tools.BorderLabels
