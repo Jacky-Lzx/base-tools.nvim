@@ -177,6 +177,11 @@ The percentage updates when the preview scrolls, changes size, or receives
 new content. It is visible on overflow and works independently of the
 `scrollbar` option.
 
+For `bottom.right`, set `label.scroll_percent({ fallback = "below" })`
+to show the percentage just below the right edge when the window has no
+horizontal bottom border. It follows external scrolling and resize events
+and appears only when the content overflows and there is room below.
+
 ## Scrollbars
 
 ```lua

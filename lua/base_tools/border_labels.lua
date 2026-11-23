@@ -12,6 +12,7 @@ local M = {}
 ---@class base_tools.ScrollPercentBorderLabel
 ---@field kind "scroll_percent"
 ---@field highlight? string
+---@field fallback? "below" Show below the window when bottom.right has no horizontal border.
 
 --- Scroll percentages are rendered by previews.
 ---@alias base_tools.BorderLabel string|[string, string?][]|base_tools.FileBorderLabel|base_tools.ScrollPercentBorderLabel

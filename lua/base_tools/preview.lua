@@ -21,6 +21,7 @@ local M = {}
 ---@field buf integer
 ---@field private float base_tools.Float
 ---@field private scrollbar? base_tools.Scrollbar
+---@field private indicator? base_tools.PreviewIndicator
 ---@field private close_event? integer
 ---@field private refresh_pending? boolean
 ---@field private scroll_labels table<string, table<string, base_tools.ScrollPercentBorderLabel>>
@@ -63,7 +64,7 @@ local function render_labels(self, labels, percent)
         local label = updates and updates[align]
         if label ~= nil then
           if type(label) == "table" and label.kind == "scroll_percent" then
-            tracked[align] = { kind = "scroll_percent", highlight = label.highlight }
+            tracked[align] = { kind = "scroll_percent", highlight = label.highlight, fallback = label.fallback }
             slots[align] = scroll_label(label, percent)
           else
             tracked[align] = nil
@@ -123,6 +124,24 @@ local function update_observation(self)
   previews[win] = self
 end
 
+local function close_indicator(self)
+  if self.indicator then
+    self.indicator:close()
+    self.indicator = nil
+  end
+end
+
+local function refresh_indicator(self, position, percent)
+  local bottom = self.scroll_labels.bottom
+  local label = bottom and bottom.right
+  if position and label and label.fallback == "below" then
+    self.indicator = self.indicator or require("base_tools.preview_indicator").new()
+    self.indicator:update(self.win, position, percent, label.highlight)
+  else
+    close_indicator(self)
+  end
+end
+
 local function refresh(self, labels)
   local position
   if self.scrollbar then
@@ -132,6 +151,7 @@ local function refresh(self, labels)
   end
   local percent = position and math.floor(position.progress * 100)
   render_labels(self, labels, percent)
+  refresh_indicator(self, position, percent)
   return position
 end
 
@@ -317,6 +337,7 @@ function Preview:close()
   if self.win then
     unobserve(self.win)
     close_scrollbar(self)
+    close_indicator(self)
     stop_highlight(self)
     self.win = nil
   end
@@ -365,6 +386,7 @@ function M.open(opts)
         view.close_event = nil
         unobserve(win)
         close_scrollbar(view)
+        close_indicator(view)
         stop_highlight(view)
         view.win = nil
       end,

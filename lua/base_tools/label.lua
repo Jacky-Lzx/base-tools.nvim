@@ -19,11 +19,14 @@ function M.filename(path, opts)
   return { kind = "filename", value = path, highlight = opts and opts.highlight }
 end
 
+---@class base_tools.ScrollPercentLabelOptions: base_tools.LabelOptions
+---@field fallback? "below" Show below the window when bottom.right has no horizontal border.
+
 --- Display the preview's scroll percentage while its contents overflow.
----@param opts? base_tools.LabelOptions
+---@param opts? base_tools.ScrollPercentLabelOptions
 ---@return base_tools.ScrollPercentBorderLabel
 function M.scroll_percent(opts)
-  return { kind = "scroll_percent", highlight = opts and opts.highlight }
+  return { kind = "scroll_percent", highlight = opts and opts.highlight, fallback = opts and opts.fallback }
 end
 
 return M

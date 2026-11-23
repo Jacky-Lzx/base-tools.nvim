@@ -281,3 +281,52 @@ test.run("base-tools.preview content scroll policies", function()
   eq(0, view:position().progress)
   view:close()
 end)
+
+test.run("base-tools.preview scroll indicator without a bottom border", function()
+  local api = vim.api
+  local eq = test.eq
+  local label = require("base_tools.label")
+  local lines = vim.split(string.rep("row\n", 20), "\n", { trimempty = true })
+  local view = require("base_tools.preview").open({
+    config = { relative = "editor", row = 1, col = 2, width = 16, height = 3, border = "none" },
+    lines = lines,
+    border_labels = { bottom = { right = label.scroll_percent({ fallback = "below", highlight = "Title" }) } },
+  })
+  local win = view.win
+  local function labels()
+    return vim.tbl_filter(function(candidate)
+      return api.nvim_win_get_config(candidate).win == win
+    end, api.nvim_list_wins())
+  end
+  local function text(target)
+    return api.nvim_buf_get_lines(api.nvim_win_get_buf(target), 0, -1, false)
+  end
+
+  eq(1, #labels())
+  local indicator = labels()[1]
+  eq({ "0%" }, text(indicator))
+  eq("Normal:Title", vim.wo[indicator].winhighlight)
+  eq(14, api.nvim_win_get_config(indicator).col)
+  view:scroll(100)
+  eq(indicator, labels()[1])
+  eq({ "100%" }, text(indicator))
+  eq(12, api.nvim_win_get_config(indicator).col)
+  assert(view:update({ width = 10 }))
+  eq(6, api.nvim_win_get_config(indicator).col)
+
+  assert(view:update({ border = "single" }))
+  eq(0, #labels())
+  eq({ " 100% ", "Title" }, api.nvim_win_get_config(win).footer[2])
+  assert(view:update({ border = "none" }))
+  eq(1, #labels())
+  view:set_content({ lines = { "fits" }, scroll = "top" })
+  eq(0, #labels())
+  view:set_lines(lines)
+  eq({ "0%" }, text(labels()[1]))
+  view:set_border_labels({ bottom = false })
+  eq(0, #labels())
+  view:set_border_labels({ bottom = { right = label.scroll_percent({ fallback = "below" }) } })
+  indicator = assert(labels()[1])
+  api.nvim_win_close(win, true)
+  eq(false, api.nvim_win_is_valid(indicator))
+end)
