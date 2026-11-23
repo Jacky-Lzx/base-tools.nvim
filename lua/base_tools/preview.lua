@@ -9,6 +9,10 @@ local M = {}
 ---@field lines? string[] Initial buffer contents.
 ---@field scrollbar? boolean|base_tools.ScrollbarOptions Show a scrollbar on overflow.
 
+---@class base_tools.PreviewContent
+---@field lines string[] Replacement buffer contents.
+---@field border_labels? base_tools.BorderLabels Labels to update with the contents.
+
 ---@class base_tools.Preview
 ---@field win? integer
 ---@field buf integer
@@ -135,16 +139,30 @@ function Preview:refresh()
   end
 end
 
+local function apply_content(self, lines, labels)
+  if lines then
+    api.nvim_buf_set_lines(self.buf, 0, -1, false, lines)
+  end
+  refresh(self, labels)
+  update_observation(self)
+end
+
+--- Replace the preview contents and optionally update its border labels.
+---@param content base_tools.PreviewContent
+---@return boolean
+function Preview:set_content(content)
+  if not self:valid() then
+    return false
+  end
+  apply_content(self, content.lines, content.border_labels)
+  return true
+end
+
 --- Replace the contents of the preview buffer.
 ---@param lines string[]
 ---@return boolean
 function Preview:set_lines(lines)
-  if not self:valid() then
-    return false
-  end
-  api.nvim_buf_set_lines(self.buf, 0, -1, false, lines)
-  self:refresh()
-  return true
+  return self:set_content({ lines = lines })
 end
 
 --- Update the Neovim window configuration used by this preview.
@@ -164,8 +182,7 @@ function Preview:set_border_labels(labels)
   if not self:valid() then
     return false
   end
-  refresh(self, labels)
-  update_observation(self)
+  apply_content(self, nil, labels)
   return true
 end
 
@@ -216,6 +233,12 @@ function Preview:close()
   self.float:close()
 end
 
+local function new_scrollbar(opts)
+  if opts then
+    return scrollbar.new(type(opts) == "table" and opts or nil)
+  end
+end
+
 --- Configure or disable the scrollbar for the existing preview window.
 ---@param opts? boolean|base_tools.ScrollbarOptions
 ---@return boolean
@@ -224,8 +247,8 @@ function Preview:set_scrollbar(opts)
     return false
   end
   close_scrollbar(self)
-  if opts then
-    self.scrollbar = scrollbar.new(type(opts) == "table" and opts or nil)
+  self.scrollbar = new_scrollbar(opts)
+  if self.scrollbar then
     self:refresh()
   end
   update_observation(self)
@@ -255,14 +278,9 @@ function M.open(opts)
         view.win = nil
       end,
     })
-    if opts.lines then
-      view:set_lines(opts.lines)
-    end
-    if opts.border_labels then
-      view:set_border_labels(opts.border_labels)
-    end
-    if opts.scrollbar then
-      view:set_scrollbar(opts.scrollbar)
+    view.scrollbar = new_scrollbar(opts.scrollbar)
+    if opts.lines or opts.border_labels or view.scrollbar then
+      apply_content(view, opts.lines, opts.border_labels)
     end
   end)
   if not ok then

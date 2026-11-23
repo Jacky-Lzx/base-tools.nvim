@@ -118,10 +118,26 @@ view:close()
 `preview.open(opts)` accepts the same window and buffer options as
 `float.open`, optional initial `lines`, and `scrollbar = true` or a table of
 scrollbar highlight options. The float's `border_labels` option and
-`view:set_border_labels()` are also available on previews. Previews use wrapping and smooth scrolling by
-default. `view:set_lines(lines)` replaces the contents, `view:update(config)`
-changes the window geometry, and `view:scroll(rows)` moves the viewport
-without scrolling beyond its last full page. Positive rows scroll down.
+`view:set_border_labels()` are also available on previews. Previews use
+wrapping and smooth scrolling by default. `view:set_lines(lines)` replaces the
+contents, `view:update(config)` changes the window geometry, and
+`view:scroll(rows)` moves the viewport without scrolling beyond its last full
+page. Positive rows scroll down.
+
+Use `view:set_content({ lines = lines, border_labels = labels })` to replace
+the contents and update selected border slots in one call. For example, when
+switching to another file:
+
+```lua
+local label = require("base_tools.label")
+view:set_content({
+  lines = new_lines,
+  border_labels = { top = { left = label.filename(new_path) } },
+})
+```
+
+Omitted border slots retain their values. The scrollbar and any scroll
+percentage labels use the new contents immediately.
 All three refresh an enabled scrollbar. External window and buffer changes
 also refresh it during redraw. Use `view:set_scrollbar(opts)` to configure
 or disable the scrollbar on an existing preview.

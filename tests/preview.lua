@@ -136,3 +136,40 @@ test.run("base-tools.preview scroll labels", function()
   eq(nil, view:refresh())
   eq(false, view:set_border_labels({ top = false }))
 end)
+
+test.run("base-tools.preview content update", function()
+  local api = vim.api
+  local eq = test.eq
+  local label = require("base_tools.label")
+  local view = require("base_tools.preview").open({
+    config = { relative = "editor", row = 1, col = 2, width = 24, height = 3, border = "single" },
+    lines = { "original" },
+    border_labels = { top = { left = "Original", right = "Lua" }, bottom = { right = label.scroll_percent() } },
+    scrollbar = true,
+  })
+  local win = view.win
+  local function scrollbar_windows()
+    return vim.tbl_filter(function(candidate)
+      return api.nvim_win_get_config(candidate).win == win
+    end, api.nvim_list_wins())
+  end
+
+  local lines = { "one", "two", "three", "four" }
+  assert(view:set_content({ lines = lines, border_labels = { top = { left = label.filename("src/first.lua") } } }))
+  eq(lines, api.nvim_buf_get_lines(view.buf, 0, -1, false))
+  local config = api.nvim_win_get_config(win)
+  eq({ "first.lua", "FloatTitle" }, config.title[1])
+  eq({ "Lua", "FloatTitle" }, config.title[3])
+  eq({ " 0% ", "FloatFooter" }, config.footer[2])
+  eq(1, #scrollbar_windows())
+
+  assert(view:set_content({ lines = { "fits" }, border_labels = { top = { left = false } } }))
+  config = api.nvim_win_get_config(win)
+  eq({ "Lua", "FloatTitle" }, config.title[2])
+  eq("", config.footer or "")
+  eq(0, #scrollbar_windows())
+  assert(view:set_lines(lines))
+  eq({ " 0% ", "FloatFooter" }, api.nvim_win_get_config(win).footer[2])
+  view:close()
+  eq(false, view:set_content({ lines = lines }))
+end)
