@@ -14,6 +14,7 @@ local api = vim.api
 ---@field win? integer
 ---@field buf integer
 ---@field private owned boolean
+---@field private borrowed_win? boolean
 ---@field private border_labels? table
 local Float = {}
 Float.__index = Float
@@ -72,13 +73,16 @@ end
 
 --- Close the float and release its buffer when this handle owns it.
 function Float:close()
+  if self.borrowed_win and self:valid() and self.border_labels then
+    self:set_border_labels({ top = false, bottom = false })
+  end
   if self.border_labels then
     self.border_labels:close()
     self.border_labels = nil
   end
   local win, owned = self.win, self.owned
   self.win, self.owned = nil, false
-  if win and api.nvim_win_is_valid(win) then
+  if not self.borrowed_win and win and api.nvim_win_is_valid(win) then
     api.nvim_win_close(win, true)
   end
   if owned and api.nvim_buf_is_valid(self.buf) then
@@ -107,6 +111,13 @@ function M.open(opts)
     error(err, 0)
   end
   return view
+end
+
+---@private
+---@param win integer
+---@return base_tools.Float
+function M.attach(win)
+  return setmetatable({ win = win, buf = api.nvim_win_get_buf(win), owned = false, borrowed_win = true }, Float)
 end
 
 return M

@@ -3,7 +3,12 @@ local float = require("base_tools.float")
 local scrollbar = require("base_tools.scrollbar")
 local ns = api.nvim_create_namespace("base-tools-preview")
 local previews = {}
+local views = {}
 local M = {}
+
+---@class base_tools.PreviewAttachOptions
+---@field scrollbar? boolean|base_tools.ScrollbarOptions Show a scrollbar on overflow.
+---@field border_labels? base_tools.BorderLabels Initial labels.
 
 ---@class base_tools.PreviewOptions: base_tools.FloatOptions
 ---@field lines? string[] Initial buffer contents.
@@ -20,18 +25,20 @@ local M = {}
 ---@field win? integer
 ---@field buf integer
 ---@field private float base_tools.Float
+---@field private attached? boolean
 ---@field private scrollbar? base_tools.Scrollbar
 ---@field private indicator? base_tools.PreviewIndicator
 ---@field private close_event? integer
 ---@field private refresh_pending? boolean
 ---@field private scroll_labels table<string, table<string, base_tools.ScrollPercentBorderLabel>>
 ---@field private scroll_percent? integer
+---@field private scroll_arrows? string
 ---@field private highlighter? vim.treesitter.highlighter
 local Preview = {}
 Preview.__index = Preview
 
 function Preview:valid()
-  return self.float:valid()
+  return self.win ~= nil and self.float:valid()
 end
 
 --- Read the current scroll position when content overflows.
@@ -40,12 +47,17 @@ function Preview:position()
   return self.win and scrollbar.position(self.win)
 end
 
-local function scroll_label(label, percent)
-  return percent and { { (" %d%% "):format(percent), label.highlight } } or false
+local function scroll_text(label, percent, arrows)
+  local value = ("%d%%"):format(percent)
+  return label.arrows and arrows ~= "" and arrows .. " " .. value or value
 end
 
-local function render_labels(self, labels, percent)
-  local changed = percent ~= self.scroll_percent
+local function scroll_label(label, percent, arrows)
+  return percent and { { " " .. scroll_text(label, percent, arrows) .. " ", label.highlight } } or false
+end
+
+local function render_labels(self, labels, percent, arrows)
+  local changed = percent ~= self.scroll_percent or arrows ~= self.scroll_arrows
   if not labels and (not changed or not next(self.scroll_labels)) then
     return
   end
@@ -64,14 +76,19 @@ local function render_labels(self, labels, percent)
         local label = updates and updates[align]
         if label ~= nil then
           if type(label) == "table" and label.kind == "scroll_percent" then
-            tracked[align] = { kind = "scroll_percent", highlight = label.highlight, fallback = label.fallback }
-            slots[align] = scroll_label(label, percent)
+            tracked[align] = {
+              kind = "scroll_percent",
+              highlight = label.highlight,
+              fallback = label.fallback,
+              arrows = label.arrows,
+            }
+            slots[align] = scroll_label(label, percent, arrows)
           else
             tracked[align] = nil
             slots[align] = label
           end
         elseif changed and tracked[align] then
-          slots[align] = scroll_label(tracked[align], percent)
+          slots[align] = scroll_label(tracked[align], percent, arrows)
         end
       end
       self.scroll_labels[edge] = next(tracked) and tracked or nil
@@ -84,7 +101,7 @@ local function render_labels(self, labels, percent)
   if next(patch) then
     self.float:set_border_labels(patch)
   end
-  self.scroll_percent = percent
+  self.scroll_percent, self.scroll_arrows = percent, arrows
 end
 
 local function unobserve(win)
@@ -131,12 +148,12 @@ local function close_indicator(self)
   end
 end
 
-local function refresh_indicator(self, position, percent)
+local function refresh_indicator(self, position, percent, arrows)
   local bottom = self.scroll_labels.bottom
   local label = bottom and bottom.right
   if position and label and label.fallback == "below" then
     self.indicator = self.indicator or require("base_tools.preview_indicator").new()
-    self.indicator:update(self.win, position, percent, label.highlight)
+    self.indicator:update(self.win, position, scroll_text(label, percent, arrows), label.highlight)
   else
     close_indicator(self)
   end
@@ -150,8 +167,9 @@ local function refresh(self, labels)
     position = self:position()
   end
   local percent = position and math.floor(position.progress * 100)
-  render_labels(self, labels, percent)
-  refresh_indicator(self, position, percent)
+  local arrows = position and ((position.offset > 0 and "↑" or "") .. (position.progress < 1 and "↓" or ""))
+  render_labels(self, labels, percent, arrows)
+  refresh_indicator(self, position, percent, arrows)
   return position
 end
 
@@ -328,20 +346,36 @@ local function close_scrollbar(self)
   end
 end
 
---- Close the preview, its scrollbar, and any buffer it owns.
-function Preview:close()
-  if self.close_event then
-    api.nvim_del_autocmd(self.close_event)
-    self.close_event = nil
-  end
-  if self.win then
-    unobserve(self.win)
+local function release(self)
+  local win = self.win
+  if win then
+    views[win] = nil
+    unobserve(win)
     close_scrollbar(self)
     close_indicator(self)
     stop_highlight(self)
     self.win = nil
   end
+end
+
+--- Close an owned preview, or release the decorations of an attached preview.
+function Preview:close()
+  if self.close_event then
+    api.nvim_del_autocmd(self.close_event)
+    self.close_event = nil
+  end
+  release(self)
   self.float:close()
+end
+
+--- Remove decorations and restore the existing window's title and footer.
+---@return boolean
+function Preview:detach()
+  if not self.attached or not self:valid() then
+    return false
+  end
+  self:close()
+  return true
 end
 
 local function new_scrollbar(opts)
@@ -366,17 +400,15 @@ function Preview:set_scrollbar(opts)
   return true
 end
 
----@param opts base_tools.PreviewOptions
----@return base_tools.Preview
-function M.open(opts)
-  local target = float.open({
-    config = opts.config,
-    buf = opts.buf,
-    enter = opts.enter,
-    buf_options = opts.buf_options,
-    win_options = vim.tbl_extend("force", { wrap = true, smoothscroll = true }, opts.win_options or {}),
-  })
-  local view = setmetatable({ float = target, win = target.win, buf = target.buf, scroll_labels = {} }, Preview)
+local function mount(target, opts, attached)
+  local view = setmetatable({
+    float = target,
+    win = target.win,
+    buf = target.buf,
+    scroll_labels = {},
+    attached = attached,
+  }, Preview)
+  views[target.win] = view
   local ok, err = pcall(function()
     local win = target.win
     view.close_event = api.nvim_create_autocmd("WinClosed", {
@@ -384,11 +416,7 @@ function M.open(opts)
       once = true,
       callback = function()
         view.close_event = nil
-        unobserve(win)
-        close_scrollbar(view)
-        close_indicator(view)
-        stop_highlight(view)
-        view.win = nil
+        release(view)
       end,
     })
     view.scrollbar = new_scrollbar(opts.scrollbar)
@@ -401,6 +429,35 @@ function M.open(opts)
     error(err, 0)
   end
   return view
+end
+
+--- Decorate a float that is already open. Repeated calls return the same attachment.
+---@param win integer Window ID or 0 for the current window.
+---@param opts? base_tools.PreviewAttachOptions
+---@return base_tools.Preview
+function M.attach(win, opts)
+  win = win == 0 and api.nvim_get_current_win() or win
+  local existing = views[win]
+  if existing then
+    assert(existing.attached, "window is already owned by a preview")
+    return existing
+  end
+  assert(api.nvim_win_get_config(win).relative ~= "", "preview.attach requires a floating window")
+  opts = opts or {}
+  return mount(float.attach(win), { scrollbar = opts.scrollbar, border_labels = opts.border_labels }, true)
+end
+
+---@param opts base_tools.PreviewOptions
+---@return base_tools.Preview
+function M.open(opts)
+  local target = float.open({
+    config = opts.config,
+    buf = opts.buf,
+    enter = opts.enter,
+    buf_options = opts.buf_options,
+    win_options = vim.tbl_extend("force", { wrap = true, smoothscroll = true }, opts.win_options or {}),
+  })
+  return mount(target, opts)
 end
 
 return M

@@ -182,6 +182,24 @@ to show the percentage just below the right edge when the window has no
 horizontal bottom border. It follows external scrolling and resize events
 and appears only when the content overflows and there is room below.
 
+Use `preview.attach(win, opts?)` when another API creates the float. The
+options accept `scrollbar` and `border_labels`. For example:
+
+```lua
+local label = require("base_tools.label")
+local view = require("base_tools.preview").attach(win, {
+  scrollbar = true,
+  border_labels = { bottom = { right = label.scroll_percent({ arrows = true }) } },
+})
+view:detach()
+```
+
+The original caller owns the window, buffer, and local options. Repeated
+calls return the current attachment. Use its setters to update the options.
+`view:detach()` removes the preview decorations and restores the original
+title and footer. Closing the window also releases the attachment.
+`arrows = true` adds indicators for directions with content remaining.
+
 ## Scrollbars
 
 ```lua

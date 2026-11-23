@@ -20,13 +20,19 @@ function M.filename(path, opts)
 end
 
 ---@class base_tools.ScrollPercentLabelOptions: base_tools.LabelOptions
+---@field arrows? boolean Show which directions can still scroll.
 ---@field fallback? "below" Show below the window when bottom.right has no horizontal border.
 
 --- Display the preview's scroll percentage while its contents overflow.
 ---@param opts? base_tools.ScrollPercentLabelOptions
 ---@return base_tools.ScrollPercentBorderLabel
 function M.scroll_percent(opts)
-  return { kind = "scroll_percent", highlight = opts and opts.highlight, fallback = opts and opts.fallback }
+  return {
+    kind = "scroll_percent",
+    highlight = opts and opts.highlight,
+    fallback = opts and opts.fallback,
+    arrows = opts and opts.arrows,
+  }
 end
 
 return M

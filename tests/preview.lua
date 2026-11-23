@@ -330,3 +330,67 @@ test.run("base-tools.preview scroll indicator without a bottom border", function
   api.nvim_win_close(win, true)
   eq(false, api.nvim_win_is_valid(indicator))
 end)
+
+test.run("base-tools.preview attaches to an existing float", function()
+  local api = vim.api
+  local eq = test.eq
+  local preview = require("base_tools.preview")
+  local label = require("base_tools.label")
+  local source = api.nvim_get_current_win()
+  local buf = api.nvim_create_buf(false, true)
+  local lines = vim.split(string.rep("row\n", 20), "\n", { trimempty = true })
+  api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  local win = api.nvim_open_win(buf, false, {
+    relative = "editor",
+    row = 1,
+    col = 2,
+    width = 20,
+    height = 3,
+    border = "single",
+    title = "existing title",
+    footer = "existing footer",
+    footer_pos = "center",
+  })
+  vim.wo[win].wrap = false
+  assert(not pcall(preview.attach, source))
+  local options = {
+    scrollbar = true,
+    border_labels = { bottom = { right = label.scroll_percent({ arrows = true }) } },
+  }
+  local view = preview.attach(win, options)
+  assert(view == preview.attach(win))
+  eq(source, api.nvim_get_current_win())
+  eq(false, vim.wo[win].wrap)
+  eq(lines, api.nvim_buf_get_lines(buf, 0, -1, false))
+  local function footer()
+    return api.nvim_win_get_config(win).footer
+  end
+  local function child()
+    return vim.iter(api.nvim_list_wins()):find(function(id)
+      return api.nvim_win_get_config(id).win == win
+    end)
+  end
+  eq({ " ↓ 0% ", "FloatFooter" }, footer()[2])
+  view:scroll(100)
+  eq({ " ↑ 100% ", "FloatFooter" }, footer()[2])
+  local bar = assert(child())
+  assert(view:detach())
+  eq(false, view:detach())
+  eq(false, view:valid())
+  eq(false, api.nvim_win_is_valid(bar))
+  eq(true, api.nvim_win_is_valid(win))
+  eq(true, api.nvim_buf_is_valid(buf))
+  local function native_text(value)
+    return type(value) == "table" and value[1][1] or value
+  end
+  eq("existing title", native_text(api.nvim_win_get_config(win).title))
+  eq("existing footer", native_text(footer()))
+  eq("center", api.nvim_win_get_config(win).footer_pos)
+  local attached = preview.attach(win, options)
+  bar = assert(child())
+  api.nvim_win_close(win, true)
+  eq(false, api.nvim_win_is_valid(bar))
+  eq(false, attached:valid())
+  eq(true, api.nvim_buf_is_valid(buf))
+  api.nvim_buf_delete(buf, { force = true })
+end)

@@ -26,7 +26,7 @@ local function border_visible(border, index)
   return glyph and glyph ~= ""
 end
 
-function Indicator:update(win, position, percent, highlight)
+function Indicator:update(win, position, value, highlight)
   local target = api.nvim_win_get_config(win)
   local row = api.nvim_win_get_position(win)[1] + position.visible
   if border_visible(target.border, 1) or border_visible(target.border, 2) or border_visible(target.border, 3) then
@@ -38,7 +38,7 @@ function Indicator:update(win, position, percent, highlight)
   end
 
   local width = api.nvim_win_get_width(win)
-  local value = text.clip(("%d%%"):format(percent), width, { side = "start" })
+  value = text.clip(value, width, { side = "start" })
   local cells = vim.fn.strdisplaywidth(value)
   local config = {
     relative = "win",
