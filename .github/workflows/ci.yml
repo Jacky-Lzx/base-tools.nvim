@@ -1,0 +1,16 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  neovim:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Neovim 0.12.6
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/neovim/neovim/releases/download/v0.12.6/nvim-linux-x86_64.tar.gz \
+            -o "$RUNNER_TEMP/neovim.tar.gz"
+          mkdir "$RUNNER_TEMP/neovim"
+          tar -xzf "$RUNNER_TEMP/neovim.tar.gz" -C "$RUNNER_TEMP/neovim" --strip-components=1
+          echo "$RUNNER_TEMP/neovim/bin" >> "$GITHUB_PATH"
+      - run: nvim --headless -u NONE -i NONE -n -l tests/test.lua

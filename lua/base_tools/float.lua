@@ -1,0 +1,81 @@
+require("base_tools")
+local M = {}
+local api = vim.api
+
+---@class base_tools.Float
+---@field win? integer
+---@field buf integer
+---@field private owned boolean
+local Float = {}
+Float.__index = Float
+
+local function set_options(options, values)
+  for key, value in pairs(values or {}) do
+    options[key] = value
+  end
+end
+
+--- Create an unlisted scratch buffer that can be reused after hiding a window.
+---@param options? table<string, any> Buffer-local options.
+---@return integer
+function M.scratch(options)
+  local buf = api.nvim_create_buf(false, true)
+  local ok, err = pcall(function()
+    vim.bo[buf].bufhidden = options and options.bufhidden or "hide"
+    set_options(vim.bo[buf], options)
+  end)
+  if not ok then
+    api.nvim_buf_delete(buf, { force = true })
+    error(err, 0)
+  end
+  return buf
+end
+
+function Float:valid()
+  return self.win ~= nil and api.nvim_win_is_valid(self.win)
+end
+
+--- Apply a full or partial Neovim window configuration to the existing float.
+---@param config vim.api.keyset.win_config
+---@return boolean
+function Float:update(config)
+  if not self:valid() then
+    return false
+  end
+  api.nvim_win_set_config(self.win, config)
+  return true
+end
+
+--- Close the float and release its buffer when this handle owns it.
+function Float:close()
+  local win, owned = self.win, self.owned
+  self.win, self.owned = nil, false
+  if win and api.nvim_win_is_valid(win) then
+    api.nvim_win_close(win, true)
+  end
+  if owned and api.nvim_buf_is_valid(self.buf) then
+    api.nvim_buf_delete(self.buf, { force = true })
+  end
+end
+
+--- Open a float with an owned scratch buffer or a buffer supplied by the caller.
+---@param opts { config: vim.api.keyset.win_config, buf?: integer, enter?: boolean, buf_options?: table<string, any>, win_options?: table<string, any> }
+---@return base_tools.Float
+function M.open(opts)
+  local owned = opts.buf == nil
+  local view = setmetatable({
+    buf = owned and M.scratch(vim.tbl_extend("force", { bufhidden = "wipe" }, opts.buf_options or {})) or opts.buf,
+    owned = owned,
+  }, Float)
+  local ok, err = pcall(function()
+    view.win = api.nvim_open_win(view.buf, opts.enter == true, opts.config)
+    set_options(vim.wo[view.win], opts.win_options)
+  end)
+  if not ok then
+    view:close()
+    error(err, 0)
+  end
+  return view
+end
+
+return M
