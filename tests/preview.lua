@@ -199,3 +199,48 @@ test.run("base-tools.preview fits its height", function()
   view:close()
   eq(nil, view:fit_height())
 end)
+
+test.run("base-tools.preview language highlighting", function()
+  local api = vim.api
+  local treesitter = vim.treesitter
+  local active = treesitter.highlighter.active
+  local eq = test.eq
+  local preview = require("base_tools.preview")
+  local buf = require("base_tools.float").scratch()
+  local function open()
+    return preview.open({
+      config = { relative = "editor", row = 1, col = 2, width = 18, height = 3, border = "single" },
+      buf = buf,
+      language = "lua",
+      lines = { "local value = true" },
+    })
+  end
+  local view = open()
+  local lua = assert(active[buf])
+  eq("lua", lua.tree:lang())
+  view:set_content({ lines = { "return true" }, language = "lua" })
+  eq(lua, active[buf])
+  view:set_lines({ "return false" })
+  eq(lua, active[buf])
+  view:set_content({ lines = { "# Markdown" }, language = "markdown" })
+  eq("markdown", active[buf].tree:lang())
+  view:set_content({ lines = { "plain" }, language = false })
+  eq(nil, active[buf])
+  view:set_content({ lines = { "return true" }, language = "lua" })
+  view:set_content({ lines = { "plain" }, language = "nonexistent_preview_parser" })
+  eq(nil, active[buf])
+  view:set_content({ lines = { "return true" }, language = "lua" })
+  api.nvim_win_close(view.win, true)
+  eq(nil, active[buf])
+
+  treesitter.start(buf, "markdown")
+  local external = assert(active[buf])
+  view = open()
+  eq(external, active[buf])
+  view:set_content({ lines = { "plain" }, language = false })
+  eq(external, active[buf])
+  view:close()
+  eq(external, active[buf])
+  treesitter.stop(buf)
+  api.nvim_buf_delete(buf, { force = true })
+end)

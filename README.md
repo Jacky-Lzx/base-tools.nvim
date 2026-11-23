@@ -147,6 +147,12 @@ All three refresh an enabled scrollbar. External window and buffer changes
 also refresh it during redraw. Use `view:set_scrollbar(opts)` to configure
 or disable the scrollbar on an existing preview.
 
+Pass `language = "lua"` to `preview.open()` or `view:set_content()` to
+enable Tree-sitter highlighting. Omit `language` to keep the current
+highlighter, or use `language = false` to clear highlighting started by the
+preview. A missing parser leaves the contents readable as plain text. An
+existing external Tree-sitter highlighter stays under the caller's control.
+
 `view:position()` returns the current scroll position when the content
 overflows. `view:refresh()` also refreshes the scrollbar and returns that
 position. Use the progress value to display a custom label. Closing the

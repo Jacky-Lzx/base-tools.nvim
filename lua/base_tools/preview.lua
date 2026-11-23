@@ -7,10 +7,12 @@ local M = {}
 
 ---@class base_tools.PreviewOptions: base_tools.FloatOptions
 ---@field lines? string[] Initial buffer contents.
+---@field language? string|false Initial Tree-sitter language.
 ---@field scrollbar? boolean|base_tools.ScrollbarOptions Show a scrollbar on overflow.
 
 ---@class base_tools.PreviewContent
 ---@field lines string[] Replacement buffer contents.
+---@field language? string|false Set a Tree-sitter language, or clear the preview's highlighter.
 ---@field border_labels? base_tools.BorderLabels Labels to update with the contents.
 
 ---@class base_tools.Preview
@@ -22,6 +24,7 @@ local M = {}
 ---@field private refresh_pending? boolean
 ---@field private scroll_labels table<string, table<string, base_tools.ScrollPercentBorderLabel>>
 ---@field private scroll_percent? integer
+---@field private highlighter? vim.treesitter.highlighter
 local Preview = {}
 Preview.__index = Preview
 
@@ -139,11 +142,41 @@ function Preview:refresh()
   end
 end
 
-local function apply_content(self, lines, labels)
-  if lines then
-    api.nvim_buf_set_lines(self.buf, 0, -1, false, lines)
+local function stop_highlight(self)
+  if self.highlighter then
+    if vim.treesitter.highlighter.active[self.buf] == self.highlighter then
+      vim.treesitter.stop(self.buf)
+    end
+    self.highlighter = nil
   end
-  refresh(self, labels)
+end
+
+local function highlight(self, language)
+  if not language or language == "" then
+    stop_highlight(self)
+    return
+  end
+
+  local treesitter = vim.treesitter
+  local lang = treesitter.language.get_lang(language) or language
+  local active = treesitter.highlighter.active[self.buf]
+  if active and (active ~= self.highlighter or active.tree:lang() == lang) then
+    return
+  end
+  stop_highlight(self)
+  if pcall(treesitter.start, self.buf, lang) then
+    self.highlighter = treesitter.highlighter.active[self.buf]
+  end
+end
+
+local function apply_content(self, content)
+  if content.lines then
+    api.nvim_buf_set_lines(self.buf, 0, -1, false, content.lines)
+  end
+  if content.language ~= nil then
+    highlight(self, content.language)
+  end
+  refresh(self, content.border_labels)
   update_observation(self)
 end
 
@@ -154,7 +187,7 @@ function Preview:set_content(content)
   if not self:valid() then
     return false
   end
-  apply_content(self, content.lines, content.border_labels)
+  apply_content(self, content)
   return true
 end
 
@@ -198,7 +231,7 @@ function Preview:set_border_labels(labels)
   if not self:valid() then
     return false
   end
-  apply_content(self, nil, labels)
+  apply_content(self, { border_labels = labels })
   return true
 end
 
@@ -244,6 +277,7 @@ function Preview:close()
   if self.win then
     unobserve(self.win)
     close_scrollbar(self)
+    stop_highlight(self)
     self.win = nil
   end
   self.float:close()
@@ -291,12 +325,13 @@ function M.open(opts)
         view.close_event = nil
         unobserve(win)
         close_scrollbar(view)
+        stop_highlight(view)
         view.win = nil
       end,
     })
     view.scrollbar = new_scrollbar(opts.scrollbar)
-    if opts.lines or opts.border_labels or view.scrollbar then
-      apply_content(view, opts.lines, opts.border_labels)
+    if opts.lines or opts.language ~= nil or opts.border_labels or view.scrollbar then
+      apply_content(view, opts)
     end
   end)
   if not ok then
