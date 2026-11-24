@@ -23,6 +23,24 @@ vim.api.nvim_feedkeys(sequence, "n", false)
 Set `do_lt` to `true` to translate `<lt>` into a literal `<`.
 Pass already encoded sequences directly to APIs that accept internal key sequences.
 
+## User commands
+
+```lua
+local commands = require("base_tools.user_command").new()
+local cleanup = commands.create("ExampleInfo", function()
+  vim.notify("Example info")
+end, { desc = "Show example info" })
+cleanup()
+```
+
+Keep one registry per plugin. `create(name, callback, opts?, buffer?)` registers a command and returns
+a cleanup function for that registration.
+`delete(name, buffer?)` removes the current command owned by that registry.
+Pass a buffer number for a buffer-local command or `0` for the current buffer.
+Omit the buffer to register a global command.
+Registration rejects commands owned elsewhere.
+Cleanup checks ownership again so a later replacement keeps its command.
+
 ## Text
 
 ```lua
