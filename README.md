@@ -11,6 +11,18 @@ Neovim **0.12+**.
 Put this repository on `runtimepath` and require the module you need.
 Plugins that use these modules can declare `Jacky-Lzx/base-tools.nvim` as a dependency.
 
+## Keys
+
+```lua
+local keys = require("base_tools.keys")
+local sequence = keys.encode("<Left>")
+vim.api.nvim_feedkeys(sequence, "n", false)
+```
+
+`encode(notation, do_lt?)` converts textual key notation to Neovim's internal key sequence.
+Set `do_lt` to `true` to translate `<lt>` into a literal `<`.
+Pass already encoded sequences directly to APIs that accept internal key sequences.
+
 ## Text
 
 ```lua
