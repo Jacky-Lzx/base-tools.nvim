@@ -41,6 +41,12 @@ Omit the buffer to register a global command.
 Registration rejects commands owned elsewhere.
 Cleanup checks ownership again so a later replacement keeps its command.
 
+Use `create_many(definitions, buffer?)` for several commands in the same scope.
+Each definition is `{ name, callback, opts? }`.
+The returned cleanup functions follow the definition order.
+Duplicate names and ownership conflicts are checked before registration.
+If Neovim rejects a later definition, earlier successes remain owned by the registry and can be removed with `delete()`.
+
 ## Text
 
 ```lua
