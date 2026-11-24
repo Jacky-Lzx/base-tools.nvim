@@ -44,6 +44,24 @@ This also covers modules used through another entry point.
 A setup error is propagated and the module remains eligible for another setup attempt or cleanup.
 This utility uses only Lua and can be required by plugins supporting older Neovim versions.
 
+## Timers
+
+```lua
+local timer = require("base_tools.timer").new()
+
+timer:start(100, function()
+  vim.notify("Ready")
+end)
+timer:cancel()
+timer:close()
+```
+
+`start(delay_ms, callback)` replaces any pending callback on that timer.
+The callback runs on Neovim's main loop, including when the delay is zero.
+`cancel()` also invalidates callbacks already waiting in the main-loop queue.
+`close()` cancels the callback and releases the timer.
+Create a new timer to schedule work after closing it.
+
 ## Keys
 
 ```lua
