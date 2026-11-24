@@ -30,3 +30,22 @@ test.run("Scratch buffer with wipe is released after the last split closes", fun
   api.nvim_win_close(second, false)
   test.eq(false, api.nvim_buf_is_valid(buf))
 end)
+
+test.run("Scratch buffers accept names and clean up failed naming", function()
+  local named = buffer.scratch({ name = "base-tools://scratch" })
+  test.eq("base-tools://scratch", api.nvim_buf_get_name(named))
+
+  local computed = buffer.scratch({
+    name = function(buf)
+      return "base-tools://scratch/" .. buf
+    end,
+  })
+  test.eq("base-tools://scratch/" .. computed, api.nvim_buf_get_name(computed))
+
+  local before = api.nvim_list_bufs()
+  test.eq(false, pcall(buffer.scratch, { name = "base-tools://scratch" }))
+  test.eq(false, pcall(buffer.scratch, { name = "base-tools://invalid", invalid_option = true }))
+  test.eq(before, api.nvim_list_bufs())
+  api.nvim_buf_delete(named, { force = true })
+  api.nvim_buf_delete(computed, { force = true })
+end)

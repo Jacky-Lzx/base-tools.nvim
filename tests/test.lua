@@ -1,5 +1,6 @@
 dofile("tests/text.lua")
 dofile("tests/buffer.lua")
+dofile("tests/footer.lua")
 dofile("tests/float.lua")
 dofile("tests/scrollbar.lua")
 dofile("tests/preview.lua")

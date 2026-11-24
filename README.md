@@ -189,7 +189,9 @@ For an unchanged string the range is `[0, #value)` and the offset is zero.
 
 ```lua
 local buffer = require("base_tools.buffer")
-local buf = buffer.scratch({ bufhidden = "wipe" })
+local buf = buffer.scratch({ bufhidden = "wipe", name = function(id)
+  return "example://output/" .. id
+end })
 
 vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "Temporary output" })
 vim.api.nvim_open_win(buf, false, { win = 0, split = "right" })
@@ -198,7 +200,31 @@ vim.api.nvim_open_win(buf, false, { win = 0, split = "right" })
 `buffer.scratch(options?)` creates an unlisted scratch buffer and applies the supplied buffer-local options.
 By default, `bufhidden = "hide"` keeps the buffer available for reuse.
 Use `bufhidden = "wipe"` to delete it when its last window stops displaying it.
-The function returns the buffer ID and deletes the newly created buffer if applying the options fails.
+An optional `name` sets the buffer name before applying the supplied options.
+Pass a string or a function that receives the new buffer ID and returns the name.
+If naming or setting options fails, the function deletes the new buffer.
+
+## Window footers
+
+```lua
+local footer = require("base_tools.footer").attach(win, {
+  left = "Enter: open  q: close",
+  right = "5 files",
+})
+footer:update({ right = "7 files" })
+footer:close()
+```
+
+A footer uses the local statusline for the buffer displayed in `win`.
+Neovim's `laststatus` option controls where the statusline is visible.
+Labels are plain text. When the window is narrow, the right label is hidden
+before trimming the left label to the available display width.
+
+`update(opts)` replaces only the supplied labels. An empty string clears a
+label. `close()` restores the previous local statusline if the footer still
+owns it. A window can display another buffer with its own statusline, and the
+footer becomes visible again when its buffer returns. Attaching a new footer
+to the same window and buffer replaces the earlier one.
 
 ## Floats
 
