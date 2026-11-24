@@ -185,6 +185,21 @@ The returned zero-based byte range `[first, last)` identifies the retained
 source text. `offset` is the byte column where that text starts in the output.
 For an unchanged string the range is `[0, #value)` and the offset is zero.
 
+## Scratch buffers
+
+```lua
+local buffer = require("base_tools.buffer")
+local buf = buffer.scratch({ bufhidden = "wipe" })
+
+vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "Temporary output" })
+vim.api.nvim_open_win(buf, false, { win = 0, split = "right" })
+```
+
+`buffer.scratch(options?)` creates an unlisted scratch buffer and applies the supplied buffer-local options.
+By default, `bufhidden = "hide"` keeps the buffer available for reuse.
+Use `bufhidden = "wipe"` to delete it when its last window stops displaying it.
+The function returns the buffer ID and deletes the newly created buffer if applying the options fails.
+
 ## Floats
 
 ```lua
@@ -209,8 +224,7 @@ and `view:close()` closes it.
 Update returns false if the window has closed.
 When `open` allocates the buffer, the handle owns it and releases it on close.
 A supplied buffer remains under the caller's ownership and follows its own `bufhidden` option.
-`float.scratch(buf_options?)` creates an unlisted scratch buffer with `bufhidden = "hide"` by default for callers
-that reuse buffers.
+`float.scratch(buf_options?)` is an alias for `buffer.scratch(buf_options?)`.
 
 ### Border labels
 

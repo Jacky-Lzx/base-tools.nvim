@@ -1,4 +1,4 @@
-require("base_tools")
+local buffer = require("base_tools.buffer")
 local M = {}
 local api = vim.api
 
@@ -19,29 +19,10 @@ local api = vim.api
 local Float = {}
 Float.__index = Float
 
-local function set_options(options, values)
-  for key, value in pairs(values or {}) do
-    options[key] = value
-  end
-end
-
---- Create an unlisted scratch buffer that can be reused after hiding a window.
+--- Create an unlisted scratch buffer through `base_tools.buffer.scratch()`.
 ---@param options? table<string, any> Buffer-local options.
 ---@return integer
-function M.scratch(options)
-  local buf = api.nvim_create_buf(false, true)
-  local ok, err = pcall(function()
-    vim.bo[buf].bufhidden = options and options.bufhidden or "hide"
-    set_options(vim.bo[buf], options)
-  end)
-
-  if not ok then
-    api.nvim_buf_delete(buf, { force = true })
-    error(err, 0)
-  end
-
-  return buf
-end
+M.scratch = buffer.scratch
 
 function Float:valid()
   return self.win ~= nil and api.nvim_win_is_valid(self.win)
@@ -111,7 +92,9 @@ function M.open(opts)
 
   local ok, err = pcall(function()
     view.win = api.nvim_open_win(view.buf, opts.enter == true, opts.config)
-    set_options(vim.wo[view.win], opts.win_options)
+    for name, value in pairs(opts.win_options or {}) do
+      vim.wo[view.win][name] = value
+    end
 
     if opts.border_labels then
       view:set_border_labels(opts.border_labels)
