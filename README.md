@@ -11,6 +11,39 @@ Neovim **0.12+**.
 Put this repository on `runtimepath` and require the module you need.
 Plugins that use these modules can declare `Jacky-Lzx/base-tools.nvim` as a dependency.
 
+## Module lifecycle
+
+Create one lifecycle per feature and call it from the plugin's own activation points.
+
+```lua
+local view = require("base_tools.lifecycle").new("my_plugin.view", {
+  setup = function(module, opts)
+    module.setup(opts)
+  end,
+  dispose = function(module)
+    module.close()
+  end,
+})
+
+view:configure({ width = 24 })
+-- Later, in a command or autocmd:
+view:ensure().open()
+-- When disabling the feature:
+view:dispose()
+```
+
+`configure(opts)` saves options and applies them immediately when the module is already managed.
+`ensure()` loads the module and runs setup as needed.
+`peek()` returns the module only after setup succeeds.
+`dispose()` releases owned resources and forgets options.
+Neither configuration, inspection nor cleanup requires a cold module.
+Lua's module cache is left intact.
+
+A caller that already holds a cached module can supply it as `configure(opts, cached)` or `dispose(cached)`.
+This also covers modules used through another entry point.
+A setup error is propagated and the module remains eligible for another setup attempt or cleanup.
+This utility uses only Lua and can be required by plugins supporting older Neovim versions.
+
 ## Keys
 
 ```lua
