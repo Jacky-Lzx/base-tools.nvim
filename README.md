@@ -62,6 +62,26 @@ The callback runs on Neovim's main loop, including when the delay is zero.
 `close()` cancels the callback and releases the timer.
 Create a new timer to schedule work after closing it.
 
+## Process groups
+
+```lua
+local group = require("base_tools.process").new()
+group:run({ "git", "status", "--short" }, { cwd = vim.fn.getcwd() }, function(result, launch_error)
+  if launch_error then
+    vim.notify(launch_error, vim.log.levels.ERROR)
+  elseif result.code == 0 then
+    vim.notify(result.stdout or "")
+  end
+end)
+-- When the caller no longer needs the result:
+group:close()
+```
+
+`run(argv, opts, callback)` takes `vim.system()` arguments and schedules its completion callback on Neovim's main loop.
+The callback receives the system result, including nonzero exit codes, or `nil, launch_error` if the process could not start.
+`close()` marks the group cancelled, sends SIGTERM to its running processes, and skips pending completion callbacks.
+It is safe to close a group more than once. Calls to `run()` on a closed group are ignored.
+
 ## Keys
 
 ```lua
