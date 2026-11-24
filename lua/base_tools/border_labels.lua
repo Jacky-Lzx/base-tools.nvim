@@ -33,6 +33,7 @@ local edges = {
 }
 local alignments = { "left", "center", "right" }
 local empty = { parts = {}, width = 0 }
+
 local Layout = {}
 Layout.__index = Layout
 
@@ -40,6 +41,7 @@ local function normalize(label, highlight)
   if label == false then
     return
   end
+
   local clip_side
   if type(label) == "string" then
     label = { { label } }
@@ -50,6 +52,7 @@ local function normalize(label, highlight)
     else
       clip_side = "start"
     end
+
     highlight = label.highlight or highlight
     label = { { vim.fn.strtrans(value) } }
   end
@@ -61,6 +64,7 @@ local function normalize(label, highlight)
       strings[#strings + 1] = part[1]
     end
   end
+
   if #parts > 0 then
     local value = table.concat(strings)
     return {
@@ -77,6 +81,7 @@ local function fit(label, cells, side)
   if cells <= 0 then
     return empty
   end
+
   if label.width <= cells then
     return label
   end
@@ -86,6 +91,7 @@ local function fit(label, cells, side)
   if offset > 0 then
     parts[#parts + 1] = { clipped:sub(1, offset), label.highlight }
   end
+
   local pos = 0
   for _, part in ipairs(label.parts) do
     local ending = pos + #part[1]
@@ -94,12 +100,15 @@ local function fit(label, cells, side)
     if start < finish then
       parts[#parts + 1] = { part[1]:sub(start - pos + 1, finish - pos), part[2] }
     end
+
     pos = ending
   end
+
   local retained_end = offset + last - first
   if retained_end < #clipped then
     parts[#parts + 1] = { clipped:sub(retained_end + 1), label.highlight }
   end
+
   return { parts = parts, width = vim.fn.strdisplaywidth(clipped) }
 end
 
@@ -108,6 +117,7 @@ local function compose(labels, width, edge)
   if not glyph or glyph == "" then
     return ""
   end
+
   local border_highlight = type(edge) == "table" and edge[2] or "FloatBorder"
   local left, right = labels.left or empty, labels.right or empty
   if left.width + right.width > width then
@@ -121,8 +131,10 @@ local function compose(labels, width, edge)
   if center.width > center_budget then
     center = center_budget > 1 and fit(center, center_budget, "end") or empty
   end
+
   local center_start = center.width > 0 and math.floor((width - center.width) / 2) or left.width
   local parts = {}
+
   local function fill(cells)
     if cells > 0 then
       parts[#parts + 1] = { glyph:rep(cells), border_highlight }
@@ -134,6 +146,7 @@ local function compose(labels, width, edge)
   vim.list_extend(parts, center.parts)
   fill(width - right.width - center_start - center.width)
   vim.list_extend(parts, right.parts)
+
   return parts
 end
 
@@ -141,6 +154,7 @@ function Layout:refresh(native_update, restore)
   local window = api.nvim_win_get_config(self.win)
   local width = api.nvim_win_get_width(self.win)
   local update = restore or {}
+
   for name, layout in pairs(self.edges) do
     local edge = edges[name]
     if native_update and (native_update[edge.field] ~= nil or native_update[edge.position] ~= nil) then
@@ -155,6 +169,7 @@ function Layout:refresh(native_update, restore)
     end
   end
   self.width = width
+
   if next(update) then
     api.nvim_win_set_config(self.win, update)
   end
@@ -164,10 +179,12 @@ function Layout:close()
   if watched[self.win] ~= self then
     return
   end
+
   if self.close_event then
     api.nvim_del_autocmd(self.close_event)
     self.close_event = nil
   end
+
   watched[self.win] = nil
   if not next(watched) then
     api.nvim_set_decoration_provider(ns, {})
@@ -178,6 +195,7 @@ local function watch(layout)
   if watched[layout.win] then
     return
   end
+
   if not next(watched) then
     api.nvim_set_decoration_provider(ns, {
       on_win = function(_, win)
@@ -191,10 +209,12 @@ local function watch(layout)
             end
           end)
         end
+
         return false
       end,
     })
   end
+
   watched[layout.win] = layout
   layout.close_event = api.nvim_create_autocmd("WinClosed", {
     pattern = tostring(layout.win),
@@ -210,6 +230,7 @@ function Layout:set(labels)
   local current = api.nvim_win_get_config(self.win)
   local layouts = vim.tbl_extend("force", {}, self.edges)
   local update = {}
+
   for name, edge in pairs(edges) do
     local changes = labels[name]
     if changes ~= nil then
@@ -223,6 +244,7 @@ function Layout:set(labels)
           end
         end
       end
+
       if next(slots) then
         previous = previous or { native = current[edge.field], native_position = current[edge.position] }
         layouts[name] = { slots = slots, native = previous.native, native_position = previous.native_position }
@@ -233,12 +255,14 @@ function Layout:set(labels)
       end
     end
   end
+
   self.edges = layouts
   self:refresh(nil, update)
   if next(layouts) then
     watch(self)
     return true
   end
+
   self:close()
   return false
 end

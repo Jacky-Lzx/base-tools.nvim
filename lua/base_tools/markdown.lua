@@ -6,12 +6,14 @@ local function visit_nodes(buf, node_type, visit)
   if not parser then
     return false
   end
+
   local query = vim.treesitter.query.parse("markdown", "(" .. node_type .. ") @node")
   for _, tree in ipairs(parser:parse()) do
     for _, node in query:iter_captures(tree:root(), buf) do
       visit(node)
     end
   end
+
   return true
 end
 
@@ -22,12 +24,14 @@ local function parsed_fences(buf)
     for row = first + 1, last + (col == 0 and 0 or 1) do
       fenced[row] = true
     end
+
     for child in node:iter_children() do
       if child:type() == "fenced_code_block_delimiter" then
         delimiters[child:start() + 1] = true
       end
     end
   end)
+
   if parsed then
     return delimiters, fenced
   end
@@ -50,10 +54,12 @@ local function scan_fences(buf)
         delimiters[row] = true
       end
     end
+
     if opened or delimiters[row] then
       fenced[row] = true
     end
   end
+
   return delimiters, fenced
 end
 
@@ -67,9 +73,11 @@ function M.conceal_fences(buf, ns)
   if not ok or not delimiters then
     delimiters, fenced = scan_fences(buf)
   end
+
   for row in pairs(delimiters) do
     api.nvim_buf_set_extmark(buf, ns, row - 1, 0, { conceal_lines = "" })
   end
+
   return delimiters, fenced
 end
 
@@ -126,11 +134,13 @@ function Renderer:close()
     api.nvim_buf_clear_namespace(self.buf, fence_ns, 0, -1)
     api.nvim_buf_clear_namespace(self.buf, rule_ns, 0, -1)
   end
+
   if api.nvim_win_is_valid(self.win) then
     local options = vim.wo[self.win]
     if options.conceallevel == 2 then
       options.conceallevel = self.conceallevel
     end
+
     if options.concealcursor == "nvic" then
       options.concealcursor = self.concealcursor
     end
@@ -148,6 +158,7 @@ function M.renderer(win)
   }, Renderer)
   options.conceallevel = 2
   options.concealcursor = "nvic"
+
   return view
 end
 

@@ -15,6 +15,7 @@ function M.position(win)
   if not api.nvim_win_is_valid(win) then
     return
   end
+
   local total = api.nvim_win_text_height(win, {}).all
   local visible = api.nvim_win_get_height(win)
   if total <= visible then
@@ -27,6 +28,7 @@ function M.position(win)
     end_vcol = view.skipcol,
   }).all
   local offset = math.min(before, total - visible)
+
   return { total = total, visible = visible, offset = offset, progress = offset / (total - visible) }
 end
 
@@ -88,13 +90,16 @@ function Scrollbar:update(win)
     mouse = false,
     zindex = (target.zindex or 50) + 1,
   }
+
   if self.target ~= win or not self.view or not self.view:valid() then
     self:close()
+
     self.view = float.open({
       config = vim.tbl_extend("force", config, { noautocmd = true }),
       win_options = { wrap = false, winhighlight = "Normal:" .. (self.opts.track_highlight or "FloatBorder") },
     })
     self.target, self.config = win, config
+
     self.close_event = api.nvim_create_autocmd("WinClosed", {
       pattern = tostring(win),
       once = true,
@@ -112,11 +117,13 @@ function Scrollbar:update(win)
   local size = math.max(1, math.floor(height * height / position.total))
   local offset = math.floor((height - size) * position.progress)
   local thumb = height .. ":" .. offset .. ":" .. size
+
   if self.thumb ~= thumb then
     local lines = {}
     for row = 1, height do
       lines[row] = row > offset and row <= offset + size and "┃" or "│"
     end
+
     local buf = self.view.buf
     api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     api.nvim_buf_clear_namespace(buf, ns, 0, -1)
@@ -127,6 +134,7 @@ function Scrollbar:update(win)
     })
     self.thumb = thumb
   end
+
   return position
 end
 

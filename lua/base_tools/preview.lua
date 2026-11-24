@@ -74,14 +74,17 @@ local function render_labels(self, labels, percent, arrows)
   for _, edge in ipairs({ "top", "bottom" }) do
     local updates = labels and labels[edge]
     local tracked = self.scroll_labels[edge]
+
     if updates == false then
       self.scroll_labels[edge] = nil
       patch[edge] = false
     elseif updates or tracked then
       tracked = tracked or {}
       local slots = {}
+
       for _, align in ipairs({ "left", "center", "right" }) do
         local label = updates and updates[align]
+
         if label ~= nil then
           if type(label) == "table" and label.kind == "scroll_percent" then
             tracked[align] = {
@@ -99,6 +102,7 @@ local function render_labels(self, labels, percent, arrows)
           slots[align] = scroll_label(tracked[align], percent, arrows)
         end
       end
+
       self.scroll_labels[edge] = next(tracked) and tracked or nil
       if next(slots) then
         patch[edge] = slots
@@ -109,6 +113,7 @@ local function render_labels(self, labels, percent, arrows)
   if next(patch) then
     self.float:set_border_labels(patch)
   end
+
   self.scroll_percent, self.scroll_arrows = percent, arrows
 end
 
@@ -129,10 +134,12 @@ local function update_observation(self)
     unobserve(win)
     return
   end
+
   if not next(previews) then
     api.nvim_set_decoration_provider(ns, {
       on_win = function(_, target)
         local view = previews[target]
+
         if view and not view.refresh_pending then
           view.refresh_pending = true
           vim.schedule(function()
@@ -142,6 +149,7 @@ local function update_observation(self)
             end
           end)
         end
+
         return false
       end,
     })
@@ -159,6 +167,7 @@ end
 local function refresh_indicator(self, position, percent, arrows)
   local bottom = self.scroll_labels.bottom
   local label = bottom and bottom.right
+
   if position and label and label.fallback == "below" then
     self.indicator = self.indicator or require("base_tools.preview_indicator").new()
     self.indicator:update(self.win, position, scroll_text(label, percent, arrows), label.highlight)
@@ -171,16 +180,19 @@ local function refresh(self, labels)
   if self.markdown then
     self.markdown:refresh()
   end
+
   local position
   if self.scrollbar then
     position = self.scrollbar:update(self.win)
   else
     position = self:position()
   end
+
   local percent = position and math.floor(position.progress * 100)
   local arrows = position and ((position.offset > 0 and "↑" or "") .. (position.progress < 1 and "↓" or ""))
   render_labels(self, labels, percent, arrows)
   refresh_indicator(self, position, percent, arrows)
+
   return position
 end
 
@@ -197,6 +209,7 @@ local function stop_highlight(self)
     if vim.treesitter.highlighter.active[self.buf] == self.highlighter then
       vim.treesitter.stop(self.buf)
     end
+
     self.highlighter = nil
   end
 end
@@ -213,7 +226,9 @@ local function highlight(self, language)
   if active and (active ~= self.highlighter or active.tree:lang() == lang) then
     return
   end
+
   stop_highlight(self)
+
   if pcall(treesitter.start, self.buf, lang) then
     self.highlighter = treesitter.highlighter.active[self.buf]
   end
@@ -246,6 +261,7 @@ function Preview:set_format(format, opts)
   if not self:valid() then
     return false
   end
+
   set_format(self, format, opts)
   self:refresh()
   update_observation(self)
@@ -260,6 +276,7 @@ function Preview:markdown_rows()
     self.markdown:refresh()
     return vim.deepcopy(self.markdown.hidden), vim.deepcopy(self.markdown.fenced)
   end
+
   return {}, {}
 end
 
@@ -285,8 +302,10 @@ local function restore_scroll(win, saved)
       })
       return
     end
+
     vim.fn.winrestview(saved)
     local view = vim.fn.winsaveview()
+
     if view.skipcol > 0 then
       local row = view.topline - 1
       if api.nvim_win_text_height(win, { start_row = row, end_row = row, start_vcol = view.skipcol }).all == 0 then
@@ -294,6 +313,7 @@ local function restore_scroll(win, saved)
         vim.fn.winrestview(view)
       end
     end
+
     local missing = api.nvim_win_get_height(win) - remaining_rows(win, view)
     if missing > 0 then
       vim.cmd("normal! " .. missing .. "\25")
@@ -307,15 +327,19 @@ local function apply_content(self, content)
   if content.lines then
     api.nvim_buf_set_lines(self.buf, 0, -1, false, content.lines)
   end
+
   if content.lines or content.format then
     set_format(self, content.format, content.markdown)
   end
+
   if not content.format and content.language ~= nil then
     highlight(self, content.language)
   end
+
   if content.scroll then
     restore_scroll(win, saved)
   end
+
   refresh(self, content.border_labels)
   update_observation(self)
 end
@@ -327,6 +351,7 @@ function Preview:set_content(content)
   if not self:valid() then
     return false
   end
+
   apply_content(self, content)
   return true
 end
@@ -349,6 +374,7 @@ function Preview:update(config)
   if not self.float:update(config) then
     return false
   end
+
   self:refresh()
   return true
 end
@@ -360,6 +386,7 @@ function Preview:content_height(opts)
   if not self:valid() then
     return
   end
+
   local rows = api.nvim_win_text_height(self.win, {}).all
   return math.max(1, math.min(rows, opts and opts.max_height or rows))
 end
@@ -372,9 +399,11 @@ function Preview:fit_height(opts)
   if not height then
     return
   end
+
   if height ~= api.nvim_win_get_height(self.win) then
     self:update({ height = height })
   end
+
   return api.nvim_win_get_height(self.win)
 end
 
@@ -384,6 +413,7 @@ function Preview:set_border_labels(labels)
   if not self:valid() then
     return false
   end
+
   apply_content(self, { border_labels = labels })
   return true
 end
@@ -396,6 +426,7 @@ function Preview:scroll(rows)
   if not self:valid() then
     return false
   end
+
   local win = self.win
   api.nvim_win_call(win, function()
     local count = math.abs(rows)
@@ -403,10 +434,12 @@ function Preview:scroll(rows)
       local remaining = remaining_rows(win, vim.fn.winsaveview())
       count = math.min(count, remaining - api.nvim_win_get_height(win))
     end
+
     if count > 0 then
       vim.cmd("normal! " .. count .. (rows > 0 and "\5" or "\25"))
     end
   end)
+
   return true, self:refresh()
 end
 
@@ -436,6 +469,7 @@ function Preview:close()
     api.nvim_del_autocmd(self.close_event)
     self.close_event = nil
   end
+
   release(self)
   self.float:close()
 end
@@ -446,6 +480,7 @@ function Preview:detach()
   if not self.attached or not self:valid() then
     return false
   end
+
   self:close()
   return true
 end
@@ -463,11 +498,13 @@ function Preview:set_scrollbar(opts)
   if not self:valid() then
     return false
   end
+
   close_scrollbar(self)
   self.scrollbar = new_scrollbar(opts)
   if self.scrollbar then
     self:refresh()
   end
+
   update_observation(self)
   return true
 end
@@ -492,14 +529,17 @@ local function mount(target, opts, attached)
       end,
     })
     view.scrollbar = new_scrollbar(opts.scrollbar)
+
     if opts.lines or opts.language ~= nil or opts.format or opts.border_labels or view.scrollbar then
       apply_content(view, opts)
     end
   end)
+
   if not ok then
     view:close()
     error(err, 0)
   end
+
   return view
 end
 
@@ -514,6 +554,7 @@ function M.attach(win, opts)
     assert(existing.attached, "window is already owned by a preview")
     return existing
   end
+
   assert(api.nvim_win_get_config(win).relative ~= "", "preview.attach requires a floating window")
   opts = opts or {}
   return mount(float.attach(win), {

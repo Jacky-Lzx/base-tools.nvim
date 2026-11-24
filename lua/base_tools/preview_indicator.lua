@@ -32,6 +32,7 @@ function Indicator:update(win, position, value, highlight)
   if border_visible(target.border, 1) or border_visible(target.border, 2) or border_visible(target.border, 3) then
     row = row + 1
   end
+
   if border_visible(target.border, 6) or row >= vim.o.lines - vim.o.cmdheight then
     self:close()
     return
@@ -53,6 +54,7 @@ function Indicator:update(win, position, value, highlight)
     mouse = false,
     zindex = (target.zindex or 50) + 1,
   }
+
   if not self.float or not self.float:valid() then
     self:close()
     self.float = float.open({
@@ -70,6 +72,7 @@ function Indicator:update(win, position, value, highlight)
     vim.wo[self.float.win].winhighlight = "Normal:" .. highlight
     self.highlight = highlight
   end
+
   if self.value ~= value then
     api.nvim_buf_set_lines(self.float.buf, 0, -1, false, { value })
     self.value = value

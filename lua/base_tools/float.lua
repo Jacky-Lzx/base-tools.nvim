@@ -34,10 +34,12 @@ function M.scratch(options)
     vim.bo[buf].bufhidden = options and options.bufhidden or "hide"
     set_options(vim.bo[buf], options)
   end)
+
   if not ok then
     api.nvim_buf_delete(buf, { force = true })
     error(err, 0)
   end
+
   return buf
 end
 
@@ -52,10 +54,12 @@ function Float:update(config)
   if not self:valid() then
     return false
   end
+
   api.nvim_win_set_config(self.win, config)
   if self.border_labels then
     self.border_labels:refresh(config)
   end
+
   return true
 end
 
@@ -66,8 +70,10 @@ function Float:set_border_labels(labels)
   if not self:valid() then
     return false
   end
+
   local layout = self.border_labels or require("base_tools.border_labels").new(self.win)
   self.border_labels = layout:set(labels) and layout or nil
+
   return true
 end
 
@@ -76,15 +82,18 @@ function Float:close()
   if self.borrowed_win and self:valid() and self.border_labels then
     self:set_border_labels({ top = false, bottom = false })
   end
+
   if self.border_labels then
     self.border_labels:close()
     self.border_labels = nil
   end
+
   local win, owned = self.win, self.owned
   self.win, self.owned = nil, false
   if not self.borrowed_win and win and api.nvim_win_is_valid(win) then
     api.nvim_win_close(win, true)
   end
+
   if owned and api.nvim_buf_is_valid(self.buf) then
     api.nvim_buf_delete(self.buf, { force = true })
   end
@@ -99,17 +108,21 @@ function M.open(opts)
     buf = owned and M.scratch(vim.tbl_extend("force", { bufhidden = "wipe" }, opts.buf_options or {})) or opts.buf,
     owned = owned,
   }, Float)
+
   local ok, err = pcall(function()
     view.win = api.nvim_open_win(view.buf, opts.enter == true, opts.config)
     set_options(vim.wo[view.win], opts.win_options)
+
     if opts.border_labels then
       view:set_border_labels(opts.border_labels)
     end
   end)
+
   if not ok then
     view:close()
     error(err, 0)
   end
+
   return view
 end
 
