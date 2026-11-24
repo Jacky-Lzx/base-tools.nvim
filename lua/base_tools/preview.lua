@@ -9,16 +9,22 @@ local M = {}
 ---@class base_tools.PreviewAttachOptions
 ---@field scrollbar? boolean|base_tools.ScrollbarOptions Show a scrollbar on overflow.
 ---@field border_labels? base_tools.BorderLabels Initial labels.
+---@field format? "markdown" Render the existing contents as a Markdown document.
+---@field markdown? base_tools.MarkdownOptions
 
 ---@class base_tools.PreviewOptions: base_tools.FloatOptions
 ---@field lines? string[] Initial buffer contents.
 ---@field language? string|false Initial Tree-sitter language.
+---@field format? "markdown" Render a Markdown document.
+---@field markdown? base_tools.MarkdownOptions
 ---@field scrollbar? boolean|base_tools.ScrollbarOptions Show a scrollbar on overflow.
 
 ---@class base_tools.PreviewContent
 ---@field lines string[] Replacement buffer contents.
 ---@field scroll? "keep"|"top" Keep the viewport or reset it to the top.
 ---@field language? string|false Set a Tree-sitter language, or clear the preview's highlighter.
+---@field format? "markdown" Render a Markdown document.
+---@field markdown? base_tools.MarkdownOptions
 ---@field border_labels? base_tools.BorderLabels Labels to update with the contents.
 
 ---@class base_tools.Preview
@@ -34,6 +40,8 @@ local M = {}
 ---@field private scroll_percent? integer
 ---@field private scroll_arrows? string
 ---@field private highlighter? vim.treesitter.highlighter
+---@field private markdown? table
+---@field private markdown_options? base_tools.MarkdownOptions
 local Preview = {}
 Preview.__index = Preview
 
@@ -117,7 +125,7 @@ end
 -- Schedule window changes outside the redraw lock.
 local function update_observation(self)
   local win = self.win
-  if not self.scrollbar and not next(self.scroll_labels) then
+  if not self.scrollbar and not next(self.scroll_labels) and not self.markdown then
     unobserve(win)
     return
   end
@@ -160,6 +168,9 @@ local function refresh_indicator(self, position, percent, arrows)
 end
 
 local function refresh(self, labels)
+  if self.markdown then
+    self.markdown:refresh()
+  end
   local position
   if self.scrollbar then
     position = self.scrollbar:update(self.win)
@@ -208,6 +219,50 @@ local function highlight(self, language)
   end
 end
 
+local function close_markdown(self)
+  if self.markdown then
+    self.markdown:close()
+    self.markdown, self.markdown_options = nil, nil
+  end
+end
+
+local function set_format(self, format, opts)
+  if format == "markdown" then
+    self.markdown = self.markdown or require("base_tools.markdown").renderer(self.win)
+    self.markdown_options = opts
+    self.markdown:set_options(opts)
+    highlight(self, "markdown")
+    self.markdown:refresh()
+  else
+    close_markdown(self)
+  end
+end
+
+--- Change document presentation without replacing the buffer text.
+---@param format "markdown"|false
+---@param opts? base_tools.MarkdownOptions
+---@return boolean
+function Preview:set_format(format, opts)
+  if not self:valid() then
+    return false
+  end
+  set_format(self, format, opts)
+  self:refresh()
+  update_observation(self)
+  return true
+end
+
+--- Return the 1-based hidden delimiter rows and all fenced rows.
+---@return table<integer, boolean> hidden
+---@return table<integer, boolean> fenced
+function Preview:markdown_rows()
+  if self.markdown then
+    self.markdown:refresh()
+    return vim.deepcopy(self.markdown.hidden), vim.deepcopy(self.markdown.fenced)
+  end
+  return {}, {}
+end
+
 local function remaining_rows(win, view)
   return api.nvim_win_text_height(win, {
     start_row = view.topline - 1,
@@ -252,7 +307,10 @@ local function apply_content(self, content)
   if content.lines then
     api.nvim_buf_set_lines(self.buf, 0, -1, false, content.lines)
   end
-  if content.language ~= nil then
+  if content.lines or content.format then
+    set_format(self, content.format, content.markdown)
+  end
+  if not content.format and content.language ~= nil then
     highlight(self, content.language)
   end
   if content.scroll then
@@ -277,7 +335,11 @@ end
 ---@param lines string[]
 ---@return boolean
 function Preview:set_lines(lines)
-  return self:set_content({ lines = lines })
+  return self:set_content({
+    lines = lines,
+    format = self.markdown and "markdown" or nil,
+    markdown = self.markdown_options,
+  })
 end
 
 --- Update the Neovim window configuration used by this preview.
@@ -362,6 +424,7 @@ local function release(self)
     unobserve(win)
     close_scrollbar(self)
     close_indicator(self)
+    close_markdown(self)
     stop_highlight(self)
     self.win = nil
   end
@@ -429,7 +492,7 @@ local function mount(target, opts, attached)
       end,
     })
     view.scrollbar = new_scrollbar(opts.scrollbar)
-    if opts.lines or opts.language ~= nil or opts.border_labels or view.scrollbar then
+    if opts.lines or opts.language ~= nil or opts.format or opts.border_labels or view.scrollbar then
       apply_content(view, opts)
     end
   end)
@@ -453,7 +516,12 @@ function M.attach(win, opts)
   end
   assert(api.nvim_win_get_config(win).relative ~= "", "preview.attach requires a floating window")
   opts = opts or {}
-  return mount(float.attach(win), { scrollbar = opts.scrollbar, border_labels = opts.border_labels }, true)
+  return mount(float.attach(win), {
+    scrollbar = opts.scrollbar,
+    border_labels = opts.border_labels,
+    format = opts.format,
+    markdown = opts.markdown,
+  }, true)
 end
 
 ---@param opts base_tools.PreviewOptions

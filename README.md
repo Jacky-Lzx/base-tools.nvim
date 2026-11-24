@@ -228,6 +228,26 @@ Position labels and key mappings are handled by the caller.
 
 ## Markdown
 
+Use `format = "markdown"` in `preview.open()`, `preview.attach()`, or
+`view:set_content()` to render documentation. The preview starts Tree-sitter
+highlighting, hides code fence rows, and draws thematic breaks at the window
+width. The buffer retains the original Markdown.
+
+```lua
+view:set_content({
+  lines = lines,
+  format = "markdown",
+  markdown = { rule_highlight = "FloatBorder" },
+})
+```
+
+Use `language = "markdown"` for syntax highlighting in a source preview.
+`view:set_format("markdown", opts?)` changes the presentation of existing
+contents, and `view:set_format(false)` restores the window's conceal options
+and clears the document decorations. `view:markdown_rows()` returns the hidden
+delimiter rows and all fenced rows as 1-based sets for custom navigation.
+
+
 Call `require("base_tools.markdown").conceal_fences(buf, ns)` to hide
 whole Markdown fence rows using extmarks in a caller-owned namespace.
 The original text remains available to parsers and for copying. The helper
