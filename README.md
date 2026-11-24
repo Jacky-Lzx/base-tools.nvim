@@ -147,6 +147,26 @@ The returned cleanup functions follow the definition order.
 Duplicate names and ownership conflicts are checked before registration.
 If Neovim rejects a later definition, earlier successes remain owned by the registry and can be removed with `delete()`.
 
+## Colors and highlights
+
+```lua
+local color = require("base_tools.color")
+local highlight = require("base_tools.highlight")
+
+local normal = highlight.resolve("Normal")
+local background = normal.bg or 0x202020
+local tinted = color.mix("#89b4fa", background, 0.15)
+vim.api.nvim_set_hl(0, "ExampleTint", { bg = tinted })
+```
+
+`color.mix(foreground, background, amount)` accepts RGB integers or `#rrggbb` strings and returns an RGB integer.
+`amount` is the foreground weight from 0 to 1.
+Use `color.hex(value)` to format an RGB value as a lowercase color string.
+
+`highlight.resolve(name)` follows links in the global highlight namespace.
+It returns the resolved definition, or an empty table for missing groups and link cycles.
+Reading a group leaves its definition and the active window untouched.
+
 ## Text
 
 ```lua

@@ -1,0 +1,17 @@
+local test = dofile("tests/support.lua")
+local color = require("base_tools.color")
+
+test.run("RGB colors blend per channel and accept both representations", function()
+  test.eq(0x282a36, color.mix("#00aa00", 0x282a36, 0))
+  test.eq(0x00aa00, color.mix(0x00aa00, "#282a36", 1))
+  test.eq(0x243731, color.mix("#00AA00", "#282a36", 0.10))
+  test.eq(0x800080, color.mix(0xff0000, 0x0000ff, 0.5))
+  test.eq("#0000ff", color.hex(0xff))
+  test.eq("#abcdef", color.hex("#ABCDEF"))
+end)
+
+test.run("RGB colors reject missing colors and invalid weights", function()
+  test.eq(false, pcall(color.mix, "NONE", 0, 0.5))
+  test.eq(false, pcall(color.hex, -1))
+  test.eq(false, pcall(color.mix, 0, 0xffffff, 1.1))
+end)
