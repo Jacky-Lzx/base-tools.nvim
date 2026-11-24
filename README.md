@@ -94,6 +94,35 @@ vim.api.nvim_feedkeys(sequence, "n", false)
 Set `do_lt` to `true` to translate `<lt>` into a literal `<`.
 Pass already encoded sequences directly to APIs that accept internal key sequences.
 
+## Keymaps
+
+```lua
+local keymap = require("base_tools.keymap")
+local bindings = keymap.resolve({
+  ["<CR>"] = { "open", desc = "Open selection" },
+  q = false,
+}, { actions = { open = true } })
+
+local binding = bindings[1]
+local cleanup, previous = keymap.install("n", binding.lhs, function()
+  vim.notify("Open selection")
+end, { buffer = 0, desc = binding.desc })
+-- When the caller releases the buffer:
+cleanup()
+```
+
+`resolve(spec, opts)` returns `{ lhs, actions, desc }` records in key order.
+Each entry accepts an action name, Lua function, action list with optional `desc`, or `false` to skip the binding.
+The caller executes the action list.
+Pass an action registry to validate action names, or leave it out for dynamic dispatch.
+Set `check_aliases = true` to reject keys that encode to the same typed sequence.
+
+`install(mode, lhs, callback, opts)` installs one Lua mapping in a single mode, using the options accepted by
+`vim.keymap.set()`.
+It returns an idempotent cleanup function and the prior mapping in the same scope, if present.
+Cleanup restores that definition while the installed callback still owns the key.
+With overlapping managed mappings it skips owners that have already released their mapping.
+
 ## User commands
 
 ```lua
