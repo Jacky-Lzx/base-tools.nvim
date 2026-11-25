@@ -47,3 +47,39 @@ test.run("base-tools config paths return false, missing values and detached copi
   overlay.signs = true
   test.eq({ signs = false, args = { "first" } }, snapshot.overlay)
 end)
+
+test.run("base-tools config instances own defaults, candidates and changes", function()
+  local defaults = { signs = false, map = { q = "close" } }
+  local rules = { replace = { { "map" } } }
+  local store = config.new(defaults, rules)
+  local another = config.new(defaults, rules)
+  defaults.map.q = "changed"
+  rules.replace[1][1] = "signs"
+
+  local candidate = store:resolve({ map = {} })
+  test.eq({}, candidate.map)
+  test.eq("close", store:get("map", "q"))
+  store:commit(candidate)
+  candidate.map.q = "changed"
+  test.eq({}, store:get("map"))
+
+  local map = { r = "refresh" }
+  store:change({ "map" }, map)
+  store:change({ "signs" }, true)
+  store:change({ "map", "r" }, false)
+  map.r = "changed"
+  local snapshot = store:get()
+  snapshot.map.r = "changed"
+  test.eq({ signs = true, map = { r = false } }, store:get())
+  test.eq(false, another:get("signs"))
+  test.eq("close", another:get("map", "q"))
+
+  assert(not pcall(store.change, store, {}, true))
+  assert(not pcall(store.change, store, { "missing" }, true))
+  assert(not pcall(store.change, store, { "signs", "missing" }, true))
+  assert(not pcall(store.change, store, { "map", "r" }, nil))
+  test.eq({ signs = true, map = { r = false } }, store:get())
+  test.eq({ signs = false, map = { q = "close" } }, store:resolve())
+  store:reset()
+  test.eq({ signs = false, map = { q = "close" } }, store:get())
+end)

@@ -47,4 +47,65 @@ function M.get(config, ...)
   return vim.deepcopy(vim.tbl_get(config, ...))
 end
 
+---@class base_tools.Config
+---@field private _defaults table
+---@field private _current table
+---@field private _rules? base_tools.ConfigMergeRules
+local Config = {}
+Config.__index = Config
+
+---Read the current configuration or a value at the given path as a copy.
+---@param ... string|integer
+---@return any
+function Config:get(...)
+  return M.get(self._current, ...)
+end
+
+---Build a candidate from defaults without changing the current configuration.
+---@param opts? table
+---@return table
+function Config:resolve(opts)
+  return M.merge(self._defaults, opts, self._rules)
+end
+
+---Store a copy of a candidate after the caller validates and applies it.
+---@param candidate table
+function Config:commit(candidate)
+  assert(type(candidate) == "table", "Config candidate must be a table")
+  self._current = vim.deepcopy(candidate)
+end
+
+---Restore the original defaults.
+function Config:reset()
+  self:commit(self._defaults)
+end
+
+---Replace an existing value in the current configuration.
+---@param path (string|integer)[]
+---@param value any
+function Config:change(path, value)
+  assert(vim.islist(path) and #path > 0, "Config path must be a nonempty list")
+  assert(value ~= nil, "Config value must not be nil")
+  local parent = self._current
+  if #path > 1 then
+    parent = vim.tbl_get(parent, unpack(path, 1, #path - 1))
+  end
+  local key = path[#path]
+  assert(type(parent) == "table" and rawget(parent, key) ~= nil, "Config path does not exist: " .. vim.inspect(path))
+  parent[key] = vim.deepcopy(value)
+end
+
+---Create an independent configuration initialized with a copy of its defaults.
+---@param defaults table
+---@param rules? base_tools.ConfigMergeRules
+---@return base_tools.Config
+function M.new(defaults, rules)
+  local initial = M.merge(defaults, nil, rules)
+  return setmetatable({
+    _defaults = initial,
+    _current = vim.deepcopy(initial),
+    _rules = vim.deepcopy(rules),
+  }, Config)
+end
+
 return M

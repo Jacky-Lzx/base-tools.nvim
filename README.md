@@ -126,12 +126,24 @@ With overlapping managed mappings it skips owners that have already released the
 ## Configuration
 
 ```lua
-local config = require("base_tools.config")
-local options = config.merge(defaults, user_options, {
+local config = require("base_tools.config").new(defaults, {
   replace = { { "compare", "keymap", "panel" } },
 })
-local signs = config.get(options, "buffer", "signs")
+local options = config:resolve(user_options)
+-- Validate and apply the options in your plugin before committing them.
+config:commit(options)
+local signs = config:get("buffer", "signs")
+config:change({ "buffer", "signs" }, true)
 ```
+
+Each instance owns its defaults and current configuration. `resolve(opts?)` builds a
+detached candidate from defaults. `commit(candidate)` copies the candidate into the
+instance, and `reset()` restores the original defaults.
+
+`get(...)` reads the current configuration using the same path semantics as the
+standalone getter below. `change(path, value)` replaces an existing value in the
+current configuration and copies any supplied table. Paths with missing keys and
+`nil` values raise an error.
 
 `merge(defaults, opts?, rules?)` merges dictionaries recursively and replaces lists.
 Fields listed in `rules.replace` use the supplied value as a whole, including an empty table.
