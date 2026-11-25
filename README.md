@@ -127,19 +127,37 @@ With overlapping managed mappings it skips owners that have already released the
 
 ```lua
 local validators = require("base_tools.config.validators")
-local config = require("base_tools.config").new(defaults, {
-  replace = { { "compare", "keymap", "panel" } },
-  fields = {
-    { path = { "buffer", "signs" }, validate = validators.type("boolean") },
-    { path = { "buffer", "debounce" }, validate = validators.range(0, 1000) },
+local config = require("base_tools.config")
+local defaults, rules = config.compile_definition({
+  buffer = {
+    default_choice = "enabled",
+    choices = {
+      enabled = {
+        fields = {
+          signs = { default = false, validate = validators.type("boolean") },
+          debounce = { default = 100, validate = validators.range(0, 1000) },
+        },
+      },
+      disabled = { value = false },
+    },
   },
+  mappings = { default = { q = "close" }, replace = true },
 })
-local options = config:resolve(user_options)
-config:commit(options, apply_options)
-local signs = config:get("buffer", "signs")
-config:validate({ "buffer", "debounce" }, 250)
-config:change({ "buffer", "signs" }, true, apply_options)
+local cfg = config.new(defaults, rules)
+cfg:commit(cfg:resolve(user_options), apply_options)
+local signs = cfg:get("buffer", "signs")
+cfg:validate({ "buffer", "debounce" }, 250)
+cfg:toggle({ "buffer", "signs" }, true, apply_options)
 ```
+
+`compile_definition(definition)` returns defaults and rules for `new()`.
+Use `default`, `validate` and `replace` on an option to declare its default value, validator and merge behavior.
+Omit `default` for an option with no built-in value.
+A section has a `fields` table for its children and derives its default table from them unless it supplies `default`.
+Section validators run after their child rules and can check relationships between their values.
+`choices` declares named alternatives that are either distinct scalar `value`s or a single section with `fields`.
+`default_choice` selects the alternative that supplies the default value.
+When a literal matches, validation skips the section's child rules and section-specific validator.
 
 Each instance owns its defaults and current configuration.
 `resolve(opts?)` builds a detached candidate from defaults.
@@ -148,21 +166,33 @@ Each instance owns its defaults and current configuration.
 candidate.
 `change(path, value, apply?)` replaces an existing value and uses the same commit flow.
 Paths with missing keys and `nil` values raise an error.
+`toggle(path, value?, apply?)` uses `change()` to update an existing boolean option and returns the new value.
+Omit `value` to invert the current value or supply `true` or `false` explicitly.
 `reset()` restores the original defaults.
 
+`schema` mirrors the configuration's shape. A function validates a value, and a nested table describes a section.
+`section(schema, { allow = callback })` lets a section accept an alternate non-table value.
+When `allow(value)` returns `true`, validation skips descendants of that section.
+When it returns `false`, it can also return a message describing the allowed value.
+The schema is compiled once when the instance is created.
+
 Each entry in `fields` defines a path and a `validate(value, get)` callback.
+Use `fields` for extra path rules alongside the schema.
+They run in list order after the schema rules.
 Return `true` if the value is valid or `false, message` for an error prefixed with the option path.
 The callback receives a copy of the field value.
 Use `get(...)` to read a copy from the candidate, for example to check whether the field's parent section is disabled.
-Full writes validate all field rules. `change()` and the read-only `validate(path, value)` validate the changed path,
-its ancestor rules and any rules below a replaced section.
+Full writes validate all field rules.
+`change()` and the read-only `validate(path, value)` validate the changed path, its ancestor rules and any rules
+below a replaced section.
 Use the `validate(candidate)` option for cross-field constraints such as a minimum that must not exceed another option's
 maximum.
 That callback sees the full candidate on every write and raises an error for invalid values.
 
 `base_tools.config.validators` provides `type(name)`, `range(min?, max?)`, `integer(min?, max?)`, `one_of(values)`,
 `optional(rule)` and `any_of(...)`.
-Ranges use inclusive bounds and finite numbers. Omit either bound with `nil` to leave that side open.
+Ranges use inclusive bounds and finite numbers.
+Omit either bound with `nil` to leave that side open.
 `one_of` accepts a list of scalar values, and `optional` also accepts `nil`.
 `any_of` tries the supplied validators in order and accepts the first successful alternative.
 

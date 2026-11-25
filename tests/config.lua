@@ -125,6 +125,35 @@ test.run("base-tools config validates before applying and publishing writes", fu
   test.eq({ min = 1, max = 3 }, store:get("range"))
 end)
 
+test.run("base-tools config toggles existing booleans through validation and apply", function()
+  local store = config.new({ buffer = { signs = false, debounce = 100 }, disabled = false }, {
+    schema = { disabled = validators.one_of({ false }) },
+  })
+  local path = { "buffer", "signs" }
+  local calls = 0
+  local function apply(candidate)
+    test.eq(false, store:get("buffer", "signs"))
+    test.eq(true, candidate.buffer.signs)
+    calls = calls + 1
+  end
+
+  test.eq(true, store:toggle(path, nil, apply))
+  test.eq(true, store:get("buffer", "signs"))
+  test.eq(false, store:toggle(path))
+  test.eq(true, store:toggle(path, true))
+  test.eq(false, store:toggle(path, false))
+
+  assert(not pcall(store.toggle, store, path, 1, apply))
+  assert(not pcall(store.toggle, store, { "buffer", "debounce" }, nil, apply))
+  assert(not pcall(store.toggle, store, { "buffer", "missing" }, nil, apply))
+  assert(not pcall(store.toggle, store, { "disabled" }, nil, apply))
+  assert(not pcall(store.toggle, store, path, nil, function()
+    error("apply failed")
+  end))
+  test.eq(1, calls)
+  test.eq({ buffer = { signs = false, debounce = 100 }, disabled = false }, store:get())
+end)
+
 test.run("base-tools config validates only affected field paths for a change", function()
   local calls = {}
   local debounce = validators.range(0, 1000)
@@ -178,6 +207,162 @@ test.run("base-tools config validates only affected field paths for a change", f
   calls = {}
   store:commit(store:get())
   test.eq({ "buffer", "signs", "debounce", "mode" }, calls)
+end)
+
+test.run("base-tools compiles nested rules and skips disabled section descendants", function()
+  local checks = {}
+  local buffer = {
+    signs = function(value)
+      checks[#checks + 1] = "signs"
+      return type(value) == "boolean", "must be boolean"
+    end,
+    refresh = {
+      delay = function(value)
+        checks[#checks + 1] = "delay"
+        return type(value) == "number" and value >= 0, "must be nonnegative"
+      end,
+    },
+  }
+  local store = config.new({ buffer = false, menu = { max_width = 40 } }, {
+    schema = {
+      buffer = config.section(buffer, {
+        allow = function(value)
+          checks[#checks + 1] = "allow"
+          return value == false, "must be a table or false"
+        end,
+      }),
+      menu = {
+        max_width = function(value)
+          checks[#checks + 1] = "width"
+          return type(value) == "number"
+        end,
+      },
+    },
+    fields = {
+      {
+        path = { "buffer", "refresh" },
+        validate = function(value)
+          checks[#checks + 1] = "extra"
+          return value.delay <= 1000, "delay must not exceed 1000"
+        end,
+      },
+    },
+  })
+  test.eq({ "allow", "width" }, checks)
+  checks = {}
+  store:change({ "menu", "max_width" }, 50)
+  test.eq({ "width" }, checks)
+
+  checks = {}
+  store:change({ "buffer" }, { signs = true, refresh = { delay = 100 } })
+  test.eq({ "delay", "signs", "extra" }, checks)
+  buffer.refresh.delay = function()
+    error("mutated input schema")
+  end
+  checks = {}
+  store:change({ "buffer", "refresh", "delay" }, 300)
+  test.eq({ "delay", "extra" }, checks)
+  local called = false
+  local ok, err = pcall(store.change, store, { "buffer", "refresh", "delay" }, -1, function()
+    called = true
+  end)
+  assert(not ok and tostring(err):find("buffer.refresh.delay must be nonnegative", 1, true))
+  test.eq(false, called)
+  test.eq(300, store:get("buffer", "refresh", "delay"))
+  ok, err = pcall(store.change, store, { "buffer" }, "off")
+  assert(not ok and tostring(err):find("buffer must be a table or false", 1, true))
+  assert(not pcall(store.change, store, { "buffer" }, { signs = true }))
+
+  checks = {}
+  store:change({ "buffer" }, false)
+  test.eq({ "allow" }, checks)
+  test.eq(false, store:get("buffer"))
+  assert(not pcall(store.change, store, { "buffer", "signs" }, true))
+end)
+
+test.run("base-tools accepts numeric schema paths and rejects malformed schemas", function()
+  local defaults = { row = { [1] = true, label = "row" } }
+  local store = config.new(defaults, {
+    schema = { row = { [1] = validators.type("boolean"), label = validators.type("string") } },
+  })
+  store:change({ "row", 1 }, false)
+  test.eq(false, store:get("row", 1))
+  assert(not pcall(store.change, store, { "row", 1 }, "off"))
+  assert(not pcall(config.new, {}, { schema = { [false] = validators.type("boolean") } }))
+  assert(not pcall(config.new, {}, { schema = { row = false } }))
+  local cycle = {}
+  cycle.self = config.section(cycle)
+  assert(not pcall(config.new, {}, { schema = cycle }))
+end)
+
+test.run("base-tools derives defaults, validation and replacement from one definition", function()
+  local panel = { q = "close" }
+  local function on_attach() end
+  local defaults, options = config.compile_definition({
+    buffer = {
+      default_choice = "enabled",
+      choices = {
+        disabled = { value = false },
+        enabled = {
+          validate = function(value)
+            return not value.signs or value.debounce < 1000, "must refresh sooner to show signs"
+          end,
+          fields = {
+            signs = { default = false, validate = validators.type("boolean") },
+            debounce = { default = 100, validate = validators.range(0) },
+            on_attach = { validate = validators.optional(validators.type("function")) },
+          },
+        },
+      },
+    },
+    command = { fields = { default = { default = "menu" }, handler = { default = on_attach } } },
+    panel = { default = panel, replace = true },
+  })
+  panel.q = "changed"
+  local store = config.new(defaults, options)
+  test.eq({ signs = false, debounce = 100 }, store:get("buffer"))
+  test.eq("menu", store:get("command", "default"))
+  test.eq(on_attach, store:get("command", "handler"))
+  test.eq({ q = "close" }, store:get("panel"))
+  test.eq({}, store:resolve({ panel = {} }).panel)
+
+  assert(store:toggle({ "buffer", "signs" }))
+  assert(not pcall(store.change, store, { "buffer", "debounce" }, -1))
+  local ok, err = pcall(store.change, store, { "buffer", "debounce" }, 1000)
+  assert(not ok and tostring(err):find("buffer must refresh sooner to show signs", 1, true))
+  test.eq(100, store:get("buffer", "debounce"))
+  store:commit(store:resolve({ buffer = false }))
+  test.eq(false, store:get("buffer"))
+  ok, err = pcall(store.change, store, { "buffer" }, true)
+  assert(not ok and tostring(err):find("buffer must be a table or false", 1, true))
+  store:change({ "buffer" }, { signs = true, debounce = 5 })
+  test.eq({ signs = true, debounce = 5 }, store:get("buffer"))
+  store:reset()
+  test.eq({ signs = false, debounce = 100 }, store:get("buffer"))
+end)
+
+test.run("base-tools supports literal choice defaults and rejects ambiguous definitions", function()
+  local store = config.new(config.compile_definition({
+    mode = { default_choice = "off", choices = { off = { value = false }, auto = { value = "auto" } } },
+    section = {
+      default_choice = "off",
+      choices = { off = { value = false }, on = { fields = { delay = { default = 20 } } } },
+    },
+  }))
+  test.eq(false, store:get("mode"))
+  test.eq(false, store:get("section"))
+  store:change({ "mode" }, "auto")
+  test.eq("auto", store:get("mode"))
+  assert(not pcall(store.change, store, { "mode" }, true))
+  store:change({ "section" }, { delay = 5 })
+  test.eq(5, store:get("section", "delay"))
+  local function invalid_choice(choices, default_choice)
+    assert(not pcall(config.compile_definition, { mode = { choices = choices, default_choice = default_choice } }))
+  end
+  invalid_choice({ off = { value = false } }, "missing")
+  invalid_choice({ off = { value = false }, duplicate = { value = false } }, "off")
+  invalid_choice({ first = { fields = {} }, second = { fields = {} } }, "first")
+  invalid_choice({ first = { value = false, fields = {} } }, "first")
 end)
 
 test.run("base-tools config validator templates support bounds, choices and optional values", function()
