@@ -161,11 +161,10 @@ When user options select a table branch whose default choice is a literal, `reso
 the table branch defaults. `replace = true` still uses the supplied value as a whole.
 
 Each instance owns its defaults and current configuration.
-`resolve(opts?)` builds a detached candidate from defaults.
-`check(candidate)` validates a full candidate without applying it or changing the current configuration.
-`commit(candidate, apply?)` validates the candidate and runs the optional apply callback before publishing it.
-`configure(opts?, apply?)` combines `resolve()` and `commit()` for applying overrides to the defaults.
-`change(path, value, apply?)` writes one option using the same commit flow.
+`resolve(opts?)` merges overrides with defaults, validates the result, and returns a detached candidate.
+`configure(opts?, apply?)` merges overrides with defaults, validates the result, and applies it as the current
+configuration.
+`change(path, value, apply?)` validates and writes one option in the current configuration.
 An exact field rule can accept setting a missing option or clearing it with `nil`.
 The parent table must exist, and clearing a field requires its validators to accept `nil`.
 `toggle(path, value?, apply?)` uses `change()` to update an existing boolean option and returns the new value.
@@ -192,7 +191,7 @@ Both pass the configuration getter to their child validators.
 The optional `apply(candidate)` callback runs only after validation succeeds and raises if application fails.
 The apply callback receives a detached copy.
 If a validator or the apply callback fails, the instance keeps the previous configuration.
-Writes to the same instance from inside these callbacks raise an error.
+Validation and writes to the same instance from inside these callbacks raise an error.
 
 `get(...)` reads a path from the current configuration and copies the result.
 With no keys it returns a copy of the whole configuration.

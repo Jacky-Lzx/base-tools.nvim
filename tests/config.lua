@@ -62,12 +62,13 @@ test.run("base-tools config instances own defaults, candidates and changes", fun
   definition.map.default.q = "changed"
   definition.map.replace = false
 
-  local candidate = store:resolve({ map = {} })
+  local overrides = { map = {} }
+  local candidate = store:resolve(overrides)
   test.eq({}, candidate.map)
-  store:check(candidate)
   test.eq("close", store:get("map", "q"))
-  store:commit(candidate)
+  store:configure(overrides)
   candidate.map.q = "changed"
+  overrides.map.q = "also changed"
   test.eq({}, store:get("map"))
 
   local map = { r = "refresh" }
@@ -110,8 +111,8 @@ test.run("base-tools config validates before applying and publishing writes", fu
 
   local ok, err = pcall(store.change, store, { "range", "min" }, 4, apply)
   assert(not ok and tostring(err):find("range.min must not exceed range.max", 1, true))
-  assert(not pcall(store.commit, store, { range = { min = 4, max = 3 } }, apply))
-  assert(not pcall(store.check, store, { range = { min = 4, max = 3 } }))
+  assert(not pcall(store.configure, store, { range = { min = 4, max = 3 } }, apply))
+  assert(not pcall(store.resolve, store, { range = { min = 4, max = 3 } }))
   test.eq(0, calls)
   test.eq({ min = 1, max = 3 }, store:get("range"))
 
@@ -272,8 +273,15 @@ test.run("base-tools config validates only affected field paths for a change", f
   test.eq({ signs = false, debounce = 1000 }, store:get("buffer"))
 
   calls = {}
-  store:commit(store:get())
+  local candidate = store:resolve({ buffer = { debounce = 200 } })
   test.eq({ "debounce", "signs", "mode", "buffer" }, calls)
+  test.eq(200, candidate.buffer.debounce)
+  test.eq(1000, store:get("buffer", "debounce"))
+
+  calls = {}
+  store:configure({ buffer = { debounce = 200 } })
+  test.eq({ "debounce", "signs", "mode", "buffer" }, calls)
+  test.eq(200, store:get("buffer", "debounce"))
 end)
 
 test.run("base-tools compiles nested rules and skips disabled section descendants", function()
@@ -400,7 +408,7 @@ test.run("base-tools derives defaults, validation and replacement from one defin
   local ok, err = pcall(store.change, store, { "buffer", "debounce" }, 1000)
   assert(not ok and tostring(err):find("buffer must refresh sooner to show signs", 1, true))
   test.eq(100, store:get("buffer", "debounce"))
-  store:commit(store:resolve({ buffer = false }))
+  store:configure({ buffer = false })
   test.eq(false, store:get("buffer"))
   ok, err = pcall(store.change, store, { "buffer" }, true)
   assert(not ok and tostring(err):find("buffer must be a table or false", 1, true))

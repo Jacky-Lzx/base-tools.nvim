@@ -264,7 +264,7 @@ local function below_skipped_section(path, skipped)
 end
 
 local function validate_and_apply(self, snapshot, path, apply)
-  assert(not self._committing, "Cannot write config from a validation or apply callback")
+  assert(not self._committing, "Cannot validate or write config from a validation or apply callback")
   local fields = self._rules.fields
   if #fields == 0 and not apply then
     return
@@ -304,6 +304,11 @@ local function validate_and_apply(self, snapshot, path, apply)
   end
 end
 
+local function commit(self, candidate, path, apply)
+  validate_and_apply(self, candidate, path, apply)
+  self._current = candidate
+end
+
 ---Read the current configuration or a value at the given path as a copy.
 ---@param ... string|integer
 ---@return any
@@ -311,41 +316,26 @@ function Config:get(...)
   return get_value(self._current, ...)
 end
 
----Build a candidate from defaults without changing the current configuration.
+---Build and validate a candidate from defaults without changing the current configuration.
 ---@param opts? table
 ---@return table
 function Config:resolve(opts)
-  return merge(self._defaults, opts, self._rules)
-end
-
----Validate a full candidate without applying or publishing it.
----@param candidate table
-function Config:check(candidate)
-  assert(type(candidate) == "table", "Config candidate must be a table")
-  validate_and_apply(self, vim.deepcopy(candidate))
-end
-
----Validate and optionally apply a candidate before publishing it.
----@param candidate table
----@param apply? fun(candidate: table) Apply the validated configuration, raising on failure.
-function Config:commit(candidate, apply)
-  assert(type(candidate) == "table", "Config candidate must be a table")
-  assert(apply == nil or type(apply) == "function", "Config apply must be a function")
-  local snapshot = vim.deepcopy(candidate)
-  validate_and_apply(self, snapshot, nil, apply)
-  self._current = snapshot
+  local candidate = merge(self._defaults, opts, self._rules)
+  validate_and_apply(self, candidate)
+  return candidate
 end
 
 ---Resolve, validate and apply options using the original defaults as the starting point.
 ---@param opts? table
 ---@param apply? fun(candidate: table) Apply the validated configuration, raising on failure.
 function Config:configure(opts, apply)
-  self:commit(self:resolve(opts), apply)
+  assert(apply == nil or type(apply) == "function", "Config apply must be a function")
+  commit(self, merge(self._defaults, opts, self._rules), nil, apply)
 end
 
 ---Restore the original defaults.
 function Config:reset()
-  self:commit(self._defaults)
+  commit(self, vim.deepcopy(self._defaults))
 end
 
 local function has_field(self, path)
@@ -395,8 +385,7 @@ end
 function Config:change(path, value, apply)
   assert(apply == nil or type(apply) == "function", "Config apply must be a function")
   local candidate = with_change(self, path, value)
-  validate_and_apply(self, candidate, vim.deepcopy(path), apply)
-  self._current = candidate
+  commit(self, candidate, vim.deepcopy(path), apply)
 end
 
 ---Set or invert an existing boolean option through the normal write flow.
