@@ -83,3 +83,41 @@ test.run("base-tools config instances own defaults, candidates and changes", fun
   store:reset()
   test.eq({ signs = false, map = { q = "close" } }, store:get())
 end)
+
+test.run("base-tools config validates before applying and publishing writes", function()
+  local function validate(candidate)
+    local range = candidate.range
+    assert(range.min <= range.max, "range.min must not exceed range.max")
+    range.max = -1
+  end
+
+  assert(not pcall(config.new, { range = { min = 3, max = 2 } }, { validate = validate }))
+  local store = config.new({ range = { min = 1, max = 3 } }, { validate = validate })
+  local calls = 0
+  local function apply(candidate)
+    calls = calls + 1
+    test.eq(1, store:get("range", "min"))
+    test.eq({ min = 2, max = 3 }, candidate.range)
+    candidate.range.max = -2
+  end
+
+  local ok, err = pcall(store.change, store, { "range", "min" }, 4, apply)
+  assert(not ok and tostring(err):find("range.min must not exceed range.max", 1, true))
+  assert(not pcall(store.commit, store, { range = { min = 4, max = 3 } }, apply))
+  test.eq(0, calls)
+  test.eq({ min = 1, max = 3 }, store:get("range"))
+
+  assert(not pcall(store.change, store, { "range", "min" }, 2, function()
+    error("apply failed")
+  end))
+  assert(not pcall(store.change, store, { "range", "min" }, 2, function()
+    store:reset()
+  end))
+  test.eq({ min = 1, max = 3 }, store:get("range"))
+
+  store:change({ "range", "min" }, 2, apply)
+  test.eq(1, calls)
+  test.eq({ min = 2, max = 3 }, store:get("range"))
+  store:reset()
+  test.eq({ min = 1, max = 3 }, store:get("range"))
+end)

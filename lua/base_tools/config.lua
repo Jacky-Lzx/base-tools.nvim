@@ -50,9 +50,13 @@ end
 ---@class base_tools.Config
 ---@field private _defaults table
 ---@field private _current table
----@field private _rules? base_tools.ConfigMergeRules
+---@field private _options? base_tools.ConfigOptions
+---@field private _committing? boolean
 local Config = {}
 Config.__index = Config
+
+---@class base_tools.ConfigOptions : base_tools.ConfigMergeRules
+---@field validate? fun(candidate: table) Raise an error if the candidate is invalid.
 
 ---Read the current configuration or a value at the given path as a copy.
 ---@param ... string|integer
@@ -65,14 +69,35 @@ end
 ---@param opts? table
 ---@return table
 function Config:resolve(opts)
-  return M.merge(self._defaults, opts, self._rules)
+  return M.merge(self._defaults, opts, self._options)
 end
 
----Store a copy of a candidate after the caller validates and applies it.
+---Validate and optionally apply a candidate before publishing it.
 ---@param candidate table
-function Config:commit(candidate)
+---@param apply? fun(candidate: table) Apply the validated configuration, raising on failure.
+function Config:commit(candidate, apply)
   assert(type(candidate) == "table", "Config candidate must be a table")
-  self._current = vim.deepcopy(candidate)
+  assert(apply == nil or type(apply) == "function", "Config apply must be a function")
+  assert(not self._committing, "Cannot write config from a validation or apply callback")
+
+  local snapshot = vim.deepcopy(candidate)
+  local validate = self._options and self._options.validate
+  if validate or apply then
+    self._committing = true
+    local ok, err = pcall(function()
+      if validate then
+        validate(vim.deepcopy(snapshot))
+      end
+      if apply then
+        apply(vim.deepcopy(snapshot))
+      end
+    end)
+    self._committing = false
+    if not ok then
+      error(err, 0)
+    end
+  end
+  self._current = snapshot
 end
 
 ---Restore the original defaults.
@@ -83,29 +108,37 @@ end
 ---Replace an existing value in the current configuration.
 ---@param path (string|integer)[]
 ---@param value any
-function Config:change(path, value)
+---@param apply? fun(candidate: table) Apply the validated configuration, raising on failure.
+function Config:change(path, value, apply)
   assert(vim.islist(path) and #path > 0, "Config path must be a nonempty list")
   assert(value ~= nil, "Config value must not be nil")
-  local parent = self._current
+  local candidate = self:get()
+  local parent = candidate
   if #path > 1 then
     parent = vim.tbl_get(parent, unpack(path, 1, #path - 1))
   end
   local key = path[#path]
   assert(type(parent) == "table" and rawget(parent, key) ~= nil, "Config path does not exist: " .. vim.inspect(path))
-  parent[key] = vim.deepcopy(value)
+  parent[key] = value
+  self:commit(candidate, apply)
 end
 
 ---Create an independent configuration initialized with a copy of its defaults.
 ---@param defaults table
----@param rules? base_tools.ConfigMergeRules
+---@param options? base_tools.ConfigOptions
 ---@return base_tools.Config
-function M.new(defaults, rules)
-  local initial = M.merge(defaults, nil, rules)
-  return setmetatable({
+function M.new(defaults, options)
+  local initial = M.merge(defaults, nil, options)
+  local validate = options and options.validate
+  assert(validate == nil or type(validate) == "function", "Config validate must be a function")
+
+  local config = setmetatable({
     _defaults = initial,
-    _current = vim.deepcopy(initial),
-    _rules = vim.deepcopy(rules),
+    _current = initial,
+    _options = vim.deepcopy(options),
   }, Config)
+  config:reset()
+  return config
 end
 
 return M

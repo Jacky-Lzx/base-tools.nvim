@@ -128,22 +128,30 @@ With overlapping managed mappings it skips owners that have already released the
 ```lua
 local config = require("base_tools.config").new(defaults, {
   replace = { { "compare", "keymap", "panel" } },
+  validate = function(candidate)
+    assert(type(candidate.buffer.signs) == "boolean", "buffer.signs must be boolean")
+  end,
 })
 local options = config:resolve(user_options)
--- Validate and apply the options in your plugin before committing them.
-config:commit(options)
+config:commit(options, apply_options)
 local signs = config:get("buffer", "signs")
-config:change({ "buffer", "signs" }, true)
+config:change({ "buffer", "signs" }, true, apply_options)
 ```
 
-Each instance owns its defaults and current configuration. `resolve(opts?)` builds a
-detached candidate from defaults. `commit(candidate)` copies the candidate into the
-instance, and `reset()` restores the original defaults.
+Each instance owns its defaults and current configuration.
+`resolve(opts?)` builds a detached candidate from defaults.
+`commit(candidate, apply?)` runs the optional validator and then the optional apply callback before publishing the candidate.
+`change(path, value, apply?)` replaces an existing value and uses the same commit flow.
+Paths with missing keys and `nil` values raise an error.
+`reset()` restores the original defaults.
 
-`get(...)` reads the current configuration using the same path semantics as the
-standalone getter below. `change(path, value)` replaces an existing value in the
-current configuration and copies any supplied table. Paths with missing keys and
-`nil` values raise an error.
+`validate(candidate)` checks the full candidate, including the initial defaults, and raises an error for invalid values.
+The optional `apply(candidate)` callback runs only after validation succeeds and raises if application fails.
+Both callbacks receive detached copies and may read the previously published configuration.
+If either callback raises, the instance keeps the previous configuration.
+Writes to the same instance from inside either callback raise an error.
+
+`get(...)` reads the current configuration using the same path semantics as the standalone getter below.
 
 `merge(defaults, opts?, rules?)` merges dictionaries recursively and replaces lists.
 Fields listed in `rules.replace` use the supplied value as a whole, including an empty table.
