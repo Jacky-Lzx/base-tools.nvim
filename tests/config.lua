@@ -154,6 +154,59 @@ test.run("base-tools config toggles existing booleans through validation and app
   test.eq({ buffer = { signs = false, debounce = 100 }, disabled = false }, store:get())
 end)
 
+test.run("base-tools configure resolves from defaults and applies only a valid candidate", function()
+  local store = config.new({ enabled = true, size = 10 }, { schema = { size = validators.range(0) } })
+  store:change({ "enabled" }, false)
+  local calls = 0
+  local function apply(candidate)
+    calls = calls + 1
+    test.eq({ enabled = false, size = 10 }, store:get())
+    test.eq({ enabled = true, size = 20 }, candidate)
+  end
+  assert(not pcall(store.configure, store, { size = -1 }, apply))
+  test.eq(0, calls)
+  assert(not pcall(store.configure, store, { size = 20 }, function()
+    error("apply failed")
+  end))
+  test.eq({ enabled = false, size = 10 }, store:get())
+  store:configure({ size = 20 }, apply)
+  test.eq(1, calls)
+  test.eq({ enabled = true, size = 20 }, store:get())
+  store:configure()
+  test.eq({ enabled = true, size = 10 }, store:get())
+end)
+
+test.run("base-tools sets and clears declared optional fields", function()
+  local store = config.new({ buffer = { signs = false }, disabled = false, extra = true }, {
+    schema = {
+      buffer = { signs = validators.type("boolean"), on_attach = validators.optional(validators.type("function")) },
+      disabled = config.section({ on_attach = validators.optional(validators.type("function")) }, {
+        allow = function(value)
+          return value == false
+        end,
+      }),
+    },
+  })
+  local path = { "buffer", "on_attach" }
+  local function on_attach() end
+  store:validate(path, on_attach)
+  test.eq(nil, store:get(unpack(path)))
+  store:change(path, on_attach)
+  test.eq(on_attach, store:get(unpack(path)))
+  store:validate(path, nil)
+  test.eq(on_attach, store:get(unpack(path)))
+  assert(not pcall(store.change, store, path, "invalid"))
+  assert(not pcall(store.change, store, { "buffer", "ON_attach" }, on_attach))
+  assert(not pcall(store.change, store, { "disabled", "on_attach" }, on_attach))
+  assert(not pcall(store.change, store, { "buffer", "signs" }, nil))
+  assert(not pcall(store.change, store, { "extra" }, nil))
+  store:change(path, nil, function(candidate)
+    test.eq(nil, candidate.buffer.on_attach)
+    test.eq(on_attach, store:get(unpack(path)))
+  end)
+  test.eq(nil, store:get(unpack(path)))
+end)
+
 test.run("base-tools config validates only affected field paths for a change", function()
   local calls = {}
   local debounce = validators.range(0, 1000)
@@ -363,6 +416,36 @@ test.run("base-tools supports literal choice defaults and rejects ambiguous defi
   invalid_choice({ off = { value = false }, duplicate = { value = false } }, "off")
   invalid_choice({ first = { fields = {} }, second = { fields = {} } }, "first")
   invalid_choice({ first = { value = false, fields = {} } }, "first")
+end)
+
+test.run("base-tools resolves overrides against the selected table branch defaults", function()
+  local function off_by_default(fields, replace)
+    return {
+      default_choice = "off",
+      choices = { off = { value = false }, on = { fields = fields } },
+      replace = replace,
+    }
+  end
+  local defaults, rules = config.compile_definition({
+    buffer = off_by_default({
+      signs = { default = false, validate = validators.type("boolean") },
+      mapping = { default = { q = "close" }, replace = true },
+      nested = off_by_default({ debounce = { default = 100, validate = validators.range(0) } }),
+    }),
+    replacement = off_by_default({ signs = { default = false } }, true),
+  })
+  local store = config.new(defaults, rules)
+  local opts = { buffer = { signs = true, mapping = {}, nested = {} }, replacement = {} }
+  local expected = { buffer = { signs = true, mapping = {}, nested = { debounce = 100 } }, replacement = {} }
+  test.eq(expected, config.merge(defaults, opts, rules))
+  store:configure(opts)
+  test.eq(expected, store:get())
+  test.eq({ buffer = false, replacement = false }, store:resolve())
+  test.eq({ buffer = false, replacement = false }, store:resolve({ buffer = false }))
+  local candidate = store:resolve(opts)
+  candidate.buffer.nested.debounce = 2
+  test.eq(expected, store:resolve(opts))
+  test.eq({ buffer = { signs = true, mapping = {}, nested = {} }, replacement = {} }, opts)
 end)
 
 test.run("base-tools config validator templates support bounds, choices and optional values", function()

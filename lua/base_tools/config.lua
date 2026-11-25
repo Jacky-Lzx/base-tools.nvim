@@ -2,8 +2,49 @@ require("base_tools")
 
 local M = {}
 
+---@class base_tools.ConfigChoiceDefaults
+---@field path (string|integer)[] Path to the choice.
+---@field defaults table Defaults for its table branch.
+
 ---@class base_tools.ConfigMergeRules
 ---@field replace? (string|integer)[][] Paths whose supplied values replace their defaults.
+---@field choice_defaults? base_tools.ConfigChoiceDefaults[] Compiled table branch defaults, with ancestors first.
+
+local function check_key(key)
+  assert(
+    type(key) == "string" or (type(key) == "number" and key % 1 == 0),
+    "Config path keys must be strings or integers"
+  )
+end
+
+local function check_path(path)
+  assert(vim.islist(path) and #path > 0, "Config path must be a nonempty list")
+  for _, key in ipairs(path) do
+    check_key(key)
+  end
+end
+
+local function apply_choice_defaults(defaults, overrides, choices)
+  assert(vim.islist(choices), "Config choice defaults must be a list")
+  for _, choice in ipairs(choices) do
+    assert(type(choice) == "table" and type(choice.defaults) == "table", "Config choice defaults must be a table")
+    local path = choice.path
+    check_path(path)
+    if
+      type(vim.tbl_get(overrides, unpack(path))) == "table" and type(vim.tbl_get(defaults, unpack(path))) ~= "table"
+    then
+      local parent = defaults
+      for i = 1, #path - 1 do
+        local key = path[i]
+        if type(parent[key]) ~= "table" then
+          parent[key] = {}
+        end
+        parent = parent[key]
+      end
+      parent[path[#path]] = vim.deepcopy(choice.defaults)
+    end
+  end
+end
 
 --- Merge overrides into defaults and return a detached configuration.
 ---@param defaults table
@@ -16,7 +57,11 @@ function M.merge(defaults, opts, rules)
   assert(rules == nil or type(rules) == "table", "Config merge rules must be a table")
 
   local overrides = vim.deepcopy(opts or {})
-  local merged = vim.tbl_deep_extend("force", vim.deepcopy(defaults), overrides)
+  local base = vim.deepcopy(defaults)
+  if rules and rules.choice_defaults ~= nil then
+    apply_choice_defaults(base, overrides, rules.choice_defaults)
+  end
+  local merged = vim.tbl_deep_extend("force", base, overrides)
 
   local replace = rules and rules.replace
   assert(replace == nil or vim.islist(replace), "Config replacement paths must be a list")
@@ -102,20 +147,6 @@ function M.section(schema, options)
   local allow = options and options.allow
   assert(allow == nil or type(allow) == "function", "Config section allow must be a function")
   return setmetatable({ schema = schema, allow = allow }, Section)
-end
-
-local function check_key(key)
-  assert(
-    type(key) == "string" or (type(key) == "number" and key % 1 == 0),
-    "Config path keys must be strings or integers"
-  )
-end
-
-local function check_path(path)
-  assert(vim.islist(path) and #path > 0, "Config path must be a nonempty list")
-  for _, key in ipairs(path) do
-    check_key(key)
-  end
 end
 
 local function section_validator(allow)
@@ -230,7 +261,10 @@ local function compile_choices(entry, path, options, visited)
   if not section then
     return selected.value, match_literal
   end
+  local choice = { path = path }
+  options.choice_defaults[#options.choice_defaults + 1] = choice
   local defaults, schema = compile_section(section, path, options, visited)
+  choice.defaults = defaults
   if selected ~= section then
     defaults = selected.value
   end
@@ -280,7 +314,7 @@ end
 ---@return table defaults
 ---@return base_tools.ConfigOptions options
 function M.compile_definition(definition)
-  local options = { replace = {}, fields = {} }
+  local options = { replace = {}, fields = {}, choice_defaults = {} }
   local defaults, schema = compile_definition(definition, {}, options, {})
   options.schema = schema
   return defaults, options
@@ -399,14 +433,29 @@ function Config:commit(candidate, apply)
   self._current = snapshot
 end
 
+---Resolve, validate and apply options using the original defaults as the starting point.
+---@param opts? table
+---@param apply? fun(candidate: table) Apply the validated configuration, raising on failure.
+function Config:configure(opts, apply)
+  self:commit(self:resolve(opts), apply)
+end
+
 ---Restore the original defaults.
 function Config:reset()
   self:commit(self._defaults)
 end
 
+local function has_field(self, path)
+  for _, field in ipairs(self._options.fields or {}) do
+    if #field.path == #path and intersects(field.path, path) then
+      return true
+    end
+  end
+  return false
+end
+
 local function with_change(self, path, value)
   check_path(path)
-  assert(value ~= nil, "Config value must not be nil")
 
   local candidate = self:get()
   local parent = candidate
@@ -415,7 +464,15 @@ local function with_change(self, path, value)
   end
 
   local key = path[#path]
-  assert(type(parent) == "table" and rawget(parent, key) ~= nil, "Config path does not exist: " .. vim.inspect(path))
+  if type(parent) ~= "table" then
+    error("Config path does not exist: " .. vim.inspect(path), 0)
+  end
+  local present = rawget(parent, key) ~= nil
+  local declared = (not present or value == nil) and has_field(self, path)
+  if not present and not declared then
+    error("Config path does not exist: " .. vim.inspect(path), 0)
+  end
+  assert(value ~= nil or declared, "Config value must not be nil without a field rule")
 
   parent[key] = vim.deepcopy(value)
   return candidate
@@ -428,7 +485,7 @@ function Config:validate(path, value)
   validate_and_apply(self, with_change(self, path, value), vim.deepcopy(path))
 end
 
----Replace an existing value and validate the affected paths before publishing.
+---Replace a value or set/clear a declared field and validate before publishing.
 ---@param path (string|integer)[]
 ---@param value any
 ---@param apply? fun(candidate: table) Apply the validated configuration, raising on failure.
@@ -473,9 +530,15 @@ function M.new(defaults, options)
   local config = setmetatable({
     _defaults = initial,
     _current = initial,
-    _options = { replace = vim.deepcopy(options.replace), fields = resolve_fields(options), validate = validate },
+    _options = {
+      replace = vim.deepcopy(options.replace),
+      choice_defaults = vim.deepcopy(options.choice_defaults),
+      fields = resolve_fields(options),
+      validate = validate,
+    },
   }, Config)
   config:reset()
+
   return config
 end
 

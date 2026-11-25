@@ -144,7 +144,7 @@ local defaults, rules = config.compile_definition({
   mappings = { default = { q = "close" }, replace = true },
 })
 local cfg = config.new(defaults, rules)
-cfg:commit(cfg:resolve(user_options), apply_options)
+cfg:configure(user_options, apply_options)
 local signs = cfg:get("buffer", "signs")
 cfg:validate({ "buffer", "debounce" }, 250)
 cfg:toggle({ "buffer", "signs" }, true, apply_options)
@@ -158,19 +158,24 @@ Section validators run after their child rules and can check relationships betwe
 `choices` declares named alternatives that are either distinct scalar `value`s or a single section with `fields`.
 `default_choice` selects the alternative that supplies the default value.
 When a literal matches, validation skips the section's child rules and section-specific validator.
+When user options select a table branch whose default choice is a literal, `resolve()` merges the supplied table over
+the table branch defaults. `replace = true` still uses the supplied value as a whole.
 
 Each instance owns its defaults and current configuration.
 `resolve(opts?)` builds a detached candidate from defaults.
 `check(candidate)` validates a full candidate without applying it or changing the current configuration.
 `commit(candidate, apply?)` runs the optional validator and then the optional apply callback before publishing the
 candidate.
-`change(path, value, apply?)` replaces an existing value and uses the same commit flow.
-Paths with missing keys and `nil` values raise an error.
+`configure(opts?, apply?)` combines `resolve()` and `commit()` for applying overrides to the defaults.
+`change(path, value, apply?)` writes one option using the same commit flow.
+An exact field rule can accept setting a missing option or clearing it with `nil`.
+The parent table must exist, and clearing a field requires its validators to accept `nil`.
 `toggle(path, value?, apply?)` uses `change()` to update an existing boolean option and returns the new value.
 Omit `value` to invert the current value or supply `true` or `false` explicitly.
 `reset()` restores the original defaults.
 
-`schema` mirrors the configuration's shape. A function validates a value, and a nested table describes a section.
+`schema` mirrors the configuration's shape.
+A function validates a value, and a nested table describes a section.
 `section(schema, { allow = callback })` lets a section accept an alternate non-table value.
 When `allow(value)` returns `true`, validation skips descendants of that section.
 When it returns `false`, it can also return a message describing the allowed value.
