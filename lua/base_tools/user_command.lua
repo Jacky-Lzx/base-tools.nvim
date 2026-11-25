@@ -60,6 +60,129 @@ local function remove_if_current(name, buffer, installed)
   return true
 end
 
+---@class base_tools.UserCommandContext
+---@field lead string Current argument prefix from Neovim.
+---@field line string Full command line.
+---@field cursor integer Byte position of the cursor.
+---@field args string[] Completed arguments after the action name.
+---@field index integer Position of the argument being completed, starting at 1.
+
+---@alias base_tools.UserCommandProvider string|string[]|fun(ctx: base_tools.UserCommandContext): string[]
+
+---@class base_tools.UserCommandAction
+---@field name string
+---@field run fun(args: vim.api.keyset.create_user_command.command_args)
+---@field complete? table<integer, base_tools.UserCommandProvider> Providers by argument position.
+
+---@class base_tools.UserCommandGroup
+---@field actions base_tools.UserCommandAction[] Actions in completion order.
+---@field default? string Action to run when the command has no arguments.
+---@field on_unknown? fun(args: vim.api.keyset.create_user_command.command_args)
+
+local function match(candidates, lead)
+  if lead == "" then
+    return candidates
+  end
+  if vim.tbl_contains(vim.opt.wildoptions:get(), "fuzzy") then
+    return vim.fn.matchfuzzy(candidates, lead)
+  end
+  return vim.tbl_filter(function(value)
+    return vim.startswith(value, lead)
+  end, candidates)
+end
+
+--- Build a command definition for use with a registry's create_many().
+---@param name string
+---@param spec base_tools.UserCommandGroup
+---@param opts? vim.api.keyset.user_command
+---@return base_tools.UserCommandDefinition
+function M.group(name, spec, opts)
+  assert(
+    type(spec) == "table" and type(spec.actions) == "table" and vim.islist(spec.actions),
+    "Command group actions must be a list"
+  )
+
+  spec = vim.deepcopy(spec)
+  local options = vim.tbl_extend("force", { nargs = "*" }, opts or {})
+  assert(options.nargs == "*" or options.nargs == "+", "Command groups require nargs=* or nargs=+")
+
+  local escapes = options.bar and '[ \t\\|"]' or "[ \t\\]"
+  local function escape_candidate(value)
+    -- User command fargs unescapes separators and backslashes.
+    return (value:gsub(escapes, "\\%0"))
+  end
+
+  local actions, names = {}, {}
+  for _, action in ipairs(spec.actions) do
+    assert(
+      type(action) == "table" and type(action.name) == "string" and action.name:match("^%S+$"),
+      "Expected a subcommand name"
+    )
+    assert(type(action.run) == "function", "Expected a handler for " .. action.name)
+    assert(action.complete == nil or type(action.complete) == "table", "Expected completion providers by position")
+    assert(not actions[action.name], "Duplicate action: " .. action.name)
+
+    actions[action.name] = action
+    names[#names + 1] = escape_candidate(action.name)
+  end
+
+  assert(spec.default == nil or actions[spec.default], "Unknown default action: " .. tostring(spec.default))
+  assert(spec.on_unknown == nil or type(spec.on_unknown) == "function", "Expected an unknown action handler")
+
+  options.complete = function(lead, line, cursor)
+    -- Leave only completed words before the cursor for Neovim's Ex parser.
+    local ok, parsed = pcall(api.nvim_parse_cmd, line:sub(1, cursor - #lead), {})
+    while ok and parsed.nextcmd ~= "" do
+      ok, parsed = pcall(api.nvim_parse_cmd, parsed.nextcmd, {})
+    end
+
+    if not ok or parsed.cmd ~= name then
+      return {}
+    end
+
+    local args = parsed.args
+    local index = #args
+    if index == 0 then
+      return match(names, lead)
+    end
+
+    local action = actions[args[1]]
+    local provider = action and action.complete and action.complete[index]
+    if not provider then
+      return {}
+    end
+
+    local native = type(provider) == "string"
+    local candidates = provider
+    if native then
+      candidates = vim.fn.getcompletion(lead, provider, true)
+    elseif type(provider) == "function" then
+      candidates =
+        provider({ lead = lead, line = line, cursor = cursor, args = vim.list_slice(args, 2), index = index })
+    end
+
+    local values = vim.tbl_map(escape_candidate, candidates)
+
+    return native and values or match(values, lead)
+  end
+
+  local function run(args)
+    local action_name = args.fargs[1] or spec.default
+    local action = actions[action_name]
+    if action then
+      return action.run(args)
+    end
+
+    if spec.on_unknown then
+      return spec.on_unknown(args)
+    end
+
+    error("Unknown " .. name .. " action: " .. (action_name or ""), 0)
+  end
+
+  return { name, run, options }
+end
+
 --- Create an isolated registry for a consumer's global and buffer-local commands.
 ---@return base_tools.UserCommandRegistry
 function M.new()
@@ -106,6 +229,17 @@ function M.new()
     check_owner(name, existing, owned[scope][name])
     install(name, callback, opts, buffer, existing ~= nil)
     return remember(name, buffer, snapshot(buffer)[name])
+  end
+
+  --- Register an ordered group of subcommands with positional completion.
+  ---@param name string
+  ---@param spec base_tools.UserCommandGroup
+  ---@param opts? vim.api.keyset.user_command
+  ---@param buffer? integer
+  ---@return base_tools.UserCommandCleanup
+  function registry.create_group(name, spec, opts, buffer)
+    local definition = M.group(name, spec, opts)
+    return registry.create(definition[1], definition[2], definition[3], buffer)
   end
 
   --- Register a batch in one scope using shared command snapshots.

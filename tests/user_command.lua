@@ -103,3 +103,97 @@ test.run("base-tools batch checks conflicts and retains successful registrations
   test.eq(nil, api.nvim_get_commands({})[first])
   api.nvim_del_user_command(foreign)
 end)
+
+test.run("base-tools command groups dispatch actions and complete by argument position", function()
+  local registry = commands.new()
+  local calls, request = {}
+  local function run(args)
+    calls[#calls + 1] = args
+  end
+  local name = "BaseToolsGroupFixture"
+  local spec = {
+    default = "info",
+    actions = {
+      { name = "info", run = run },
+      {
+        name = "compare",
+        run = run,
+        complete = {
+          { "中文 one", "second" },
+          function(ctx)
+            request = ctx
+            return { "origin/main", "origin/topic" }
+          end,
+        },
+      },
+    },
+  }
+  local opts = { range = true, bang = true, bar = true }
+  local cleanup = registry.create_group(name, spec, opts)
+  assert(not opts.complete and not opts.nargs)
+  vim.cmd(name)
+  test.eq({}, calls[1].fargs)
+  vim.cmd(name .. [[! compare 中文\ one origin/main]])
+  test.eq({ "compare", "中文 one", "origin/main" }, calls[2].fargs)
+  test.eq(true, calls[2].bang)
+
+  local previous_wildoptions = vim.o.wildoptions
+  vim.o.wildoptions = ""
+  local function complete(line)
+    return vim.fn.getcompletion(line, "cmdline", true)
+  end
+  test.eq({ "info", "compare" }, complete(name .. " "))
+  test.eq({ "compare" }, complete("set number | silent 1,2BaseToolsGroupF! co"))
+  test.eq({ [[中文\ one]] }, complete(name .. [[ compare 中文\ o]]))
+  local prefix = name .. [[ compare 中文\ one origin/m]]
+  local line = prefix .. " suffix"
+  local definition = commands.group(name, spec, opts)
+  test.eq({ "origin/main" }, definition[3].complete("origin/m", line, #prefix))
+  test.eq({ "中文 one" }, request.args)
+  test.eq({ "origin/m", line, #prefix, 2 }, { request.lead, request.line, request.cursor, request.index })
+  test.eq({}, complete(name .. " compare second origin/main "))
+  test.eq({}, complete(name .. " unknown "))
+  test.eq(false, pcall(vim.cmd, name .. " unknown"))
+  vim.o.wildoptions = "fuzzy"
+  test.eq({ "compare" }, complete(name .. " cmp"))
+  vim.o.wildoptions = previous_wildoptions
+
+  local duplicate = { actions = { spec.actions[1], spec.actions[1] } }
+  assert(not pcall(registry.create_group, name, duplicate))
+  test.eq({}, complete(name .. " info "))
+  cleanup()
+  test.eq(0, vim.fn.exists(":" .. name))
+end)
+
+test.run("base-tools command groups delegate native path completion in a batch", function()
+  local registry = commands.new()
+  local folder = vim.fn.tempname()
+  vim.fn.mkdir(folder)
+  local path = folder .. '/file #中文|"name'
+  vim.fn.writefile({}, path)
+  local name = "BaseToolsGroupExport"
+  local received
+  local definition = commands.group(name, {
+    actions = {
+      {
+        name = "export",
+        run = function(args)
+          received = args.fargs[2]
+        end,
+        complete = { "file" },
+      },
+    },
+  }, { nargs = "+", bar = true })
+  local buffer = api.nvim_create_buf(false, true)
+  local cleanups = registry.create_many({ definition }, buffer)
+  api.nvim_buf_call(buffer, function()
+    local items = vim.fn.getcompletion(name .. " export " .. folder .. "/file", "cmdline", true)
+    test.eq(1, #items)
+    vim.cmd(name .. " export " .. items[1])
+    test.eq(path, received)
+  end)
+  cleanups[1]()
+  test.eq(nil, api.nvim_buf_get_commands(buffer, {})[name])
+  api.nvim_buf_delete(buffer, { force = true })
+  vim.fn.delete(folder, "rf")
+end)

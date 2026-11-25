@@ -133,8 +133,8 @@ end, { desc = "Show example info" })
 cleanup()
 ```
 
-Keep one registry per plugin. `create(name, callback, opts?, buffer?)` registers a command and returns
-a cleanup function for that registration.
+Keep one registry per plugin.
+`create(name, callback, opts?, buffer?)` registers a command and returns a cleanup function for that registration.
 `delete(name, buffer?)` removes the current command owned by that registry.
 Pass a buffer number for a buffer-local command or `0` for the current buffer.
 Omit the buffer to register a global command.
@@ -146,6 +146,30 @@ Each definition is `{ name, callback, opts? }`.
 The returned cleanup functions follow the definition order.
 Duplicate names and ownership conflicts are checked before registration.
 If Neovim rejects a later definition, earlier successes remain owned by the registry and can be removed with `delete()`.
+
+Use `create_group(name, spec, opts?, buffer?)` when an Ex command selects an action with its first argument.
+
+```lua
+commands.create_group("Example", {
+  default = "info",
+  actions = {
+    { name = "info", run = show_info },
+    { name = "export", run = export_file, complete = { "file" } },
+  },
+}, { bang = true })
+```
+
+Each handler receives Neovim's original command arguments, including the action in `fargs[1]`.
+Pass options such as `bang`, `range`, and `bar` directly to Neovim.
+Groups default to `nargs = "*"`. Use `nargs = "+"` to require an action.
+An optional `on_unknown(args)` handles unknown actions.
+
+`complete` supplies a provider for each argument after the action.
+A string delegates to a native completion type such as `"file"`.
+A list or a function returning a list supplies literal candidates, matched according to `wildoptions`.
+Function providers receive `lead`, `line`, `cursor`, the already completed `args` after the action, and
+the one-based argument `index`.
+The module's `group(name, spec, opts?)` returns a definition tuple for `create_many()`.
 
 ## Colors and highlights
 
