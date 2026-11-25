@@ -1,3 +1,4 @@
+dofile("tests/config.lua")
 dofile("tests/text.lua")
 dofile("tests/buffer.lua")
 dofile("tests/footer.lua")

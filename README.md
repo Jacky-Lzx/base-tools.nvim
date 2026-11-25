@@ -123,6 +123,25 @@ It returns an idempotent cleanup function and the prior mapping in the same scop
 Cleanup restores that definition while the installed callback still owns the key.
 With overlapping managed mappings it skips owners that have already released their mapping.
 
+## Configuration
+
+```lua
+local config = require("base_tools.config")
+local options = config.merge(defaults, user_options, {
+  replace = { { "compare", "keymap", "panel" } },
+})
+local signs = config.get(options, "buffer", "signs")
+```
+
+`merge(defaults, opts?, rules?)` merges dictionaries recursively and replaces lists.
+Fields listed in `rules.replace` use the supplied value as a whole, including an empty table.
+Supplied `false` values override defaults.
+The returned table is detached from both inputs.
+
+`get(config, ...)` reads a path and copies the result.
+With no keys it returns a copy of the whole configuration.
+Missing paths return `nil`.
+
 ## User commands
 
 ```lua
