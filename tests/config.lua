@@ -55,6 +55,74 @@ test.run("base-tools config paths return false, missing values and detached copi
   test.eq({ signs = false, args = { "first" } }, store:get("overlay"))
 end)
 
+test.run("base-tools config sections merge current values and validate in the parent", function()
+  local store = config.new({
+    limit = { default = 10 },
+    panel = {
+      replace = true,
+      validate = function(_, get)
+        return get("panel", "settings", "width") <= get("limit"), "width exceeds the configured limit"
+      end,
+      fields = {
+        padding = { default = 1, validate = validators.integer(0) },
+        settings = {
+          fields = {
+            args = { default = { "--default" }, replace = true },
+            style = { default = { border = "rounded", color = "blue" } },
+            width = { default = 2, validate = validators.integer(1) },
+          },
+        },
+      },
+    },
+  })
+  local section = store:section("panel", "settings")
+  test.eq(2, section:get("width"))
+  local saved = { args = { "--saved" }, style = { border = "double", color = "blue" }, width = 5 }
+  store:configure({ limit = 20, panel = { padding = 3, settings = saved } })
+  local opts = { args = {}, style = { color = "red" }, width = 15 }
+  local candidate = section:merge(opts)
+  test.eq({ args = {}, style = { border = "double", color = "red" }, width = 15 }, candidate)
+  candidate.style.color = "green"
+  test.eq({ color = "red" }, opts.style)
+  local snapshot = section:merge()
+  snapshot.width = 30
+  test.eq(saved, section:get())
+  test.eq(3, store:get("panel", "padding"))
+
+  local ok, err = pcall(section.merge, section, { width = 21 })
+  assert(not ok and tostring(err):find("panel width exceeds the configured limit", 1, true))
+  ok, err = pcall(section.merge, section, { width = "wide" })
+  assert(not ok and tostring(err):find("panel.settings.width must be an integer", 1, true))
+  test.eq(saved, section:get())
+  store:reset()
+  test.eq(2, section:get("width"))
+end)
+
+test.run("base-tools config section merges honor replacements and choice defaults", function()
+  local store = config.new({
+    mapping = { default = { q = "close" }, replace = true },
+    buffer = {
+      default_choice = "off",
+      choices = {
+        off = { value = false },
+        on = { fields = { debounce = { default = 100 }, signs = { default = false } } },
+      },
+    },
+  })
+  local mapping = store:section("mapping")
+  test.eq({ q = "close" }, mapping:merge())
+  test.eq({}, mapping:merge({}))
+  test.eq({ q = "close" }, mapping:get())
+
+  local buffer = store:section("buffer")
+  test.eq(false, buffer:merge())
+  test.eq(nil, buffer:get("debounce"))
+  test.eq({ debounce = 100, signs = true }, buffer:merge({ signs = true }))
+  test.eq(false, buffer:get())
+  assert(not pcall(store.section, store, "buffer", nil))
+  assert(not pcall(buffer.merge, buffer, true))
+end)
+
 test.run("base-tools config instances own defaults, candidates and changes", function()
   local definition = { signs = { default = false }, map = { default = { q = "close" }, replace = true } }
   local store = config.new(definition)

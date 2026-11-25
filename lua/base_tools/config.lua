@@ -6,9 +6,11 @@ local M = {}
 ---@field path (string|integer)[] Path to the choice.
 ---@field defaults table Defaults for its table branch.
 
----@class base_tools.ConfigRules
+---@class base_tools.ConfigMergeRules
 ---@field replace (string|integer)[][] Paths whose supplied values replace their defaults.
 ---@field choice_defaults base_tools.ConfigChoiceDefaults[] Table branch defaults, with ancestors first.
+
+---@class base_tools.ConfigRules: base_tools.ConfigMergeRules
 ---@field fields base_tools.ConfigField[] Validators in application order.
 
 local function check_key(key)
@@ -82,6 +84,13 @@ end
 ---@field private _committing? boolean
 local Config = {}
 Config.__index = Config
+
+---@class base_tools.ConfigSection
+---@field private _config base_tools.Config
+---@field private _path (string|integer)[]
+---@field private _rules base_tools.ConfigMergeRules
+local Section = {}
+Section.__index = Section
 
 ---@alias base_tools.ConfigFieldValidator fun(value: any, get: fun(...: string|integer): any): boolean, string?
 
@@ -370,6 +379,64 @@ end
 ---@param value any
 function Config:validate(path, value)
   validate_and_apply(self, with_change(self, path, value), vim.deepcopy(path))
+end
+
+---Get a live view of a path in this configuration.
+---@param ... string|integer
+---@return base_tools.ConfigSection
+function Config:section(...)
+  local path = { ... }
+  assert(#path == select("#", ...), "Config path keys must be strings or integers")
+  check_path(path)
+
+  -- Keep the final section key so rules for the section itself also apply.
+  local function relative(rule_path)
+    if #rule_path >= #path and intersects(path, rule_path) then
+      return vim.list_slice(rule_path, #path)
+    end
+  end
+
+  local rules = { replace = {}, choice_defaults = {} }
+  for _, rule_path in ipairs(self._rules.replace) do
+    local scoped = relative(rule_path)
+    if scoped then
+      rules.replace[#rules.replace + 1] = scoped
+    end
+  end
+  for _, choice in ipairs(self._rules.choice_defaults) do
+    local scoped = relative(choice.path)
+    if scoped then
+      rules.choice_defaults[#rules.choice_defaults + 1] = { path = scoped, defaults = choice.defaults }
+    end
+  end
+
+  return setmetatable({ _config = self, _path = path, _rules = rules }, Section)
+end
+
+---Read a detached value at a path relative to this section.
+---@param ... string|integer
+---@return any
+function Section:get(...)
+  local path = vim.list_extend(vim.list_slice(self._path), { ... })
+  return self._config:get(unpack(path))
+end
+
+---Merge and validate a temporary section from its current value.
+---Omit overrides to read a copy of the current section.
+---@param opts? table
+---@return any
+function Section:merge(opts)
+  if opts == nil then
+    return self:get()
+  end
+  assert(type(opts) == "table", "Config options must be a table")
+
+  local config, path = self._config, self._path
+  local key = path[#path]
+  local current = vim.tbl_get(config._current, unpack(path))
+  local candidate = merge({ [key] = current }, { [key] = opts }, self._rules)[key]
+  config:validate(path, candidate)
+  return candidate
 end
 
 ---Replace a value or set/clear a declared field and validate before publishing.

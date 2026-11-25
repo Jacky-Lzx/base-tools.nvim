@@ -171,6 +171,13 @@ The parent table must exist, and clearing a field requires its validators to acc
 Omit `value` to invert the current value or supply `true` or `false` explicitly.
 `reset()` restores the original defaults.
 
+`section(...)` returns a live view at a path in the configuration. For example,
+`local keymap = cfg:section("compare", "keymap")` creates a view that follows later configuration changes.
+`keymap:get(...)` reads a copy at a path relative to the section. `keymap:merge(overrides)` builds a detached
+candidate from the current section, honoring its replacement and choice rules. Validation uses the full
+candidate configuration and checks the same paths as `validate()`. Calling `keymap:merge()` reads a copy of
+the current section.
+
 An option or section validator `validate(value, get)` receives a copy of the associated value.
 Return `true` if the value is valid or `false, message` for an error prefixed with the option path.
 Use `get(...)` to read related values from the candidate.
