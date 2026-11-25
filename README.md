@@ -128,7 +128,7 @@ With overlapping managed mappings it skips owners that have already released the
 ```lua
 local validators = require("base_tools.config.validators")
 local config = require("base_tools.config")
-local defaults, rules = config.compile_definition({
+local cfg = config.new({
   buffer = {
     default_choice = "enabled",
     choices = {
@@ -143,14 +143,13 @@ local defaults, rules = config.compile_definition({
   },
   mappings = { default = { q = "close" }, replace = true },
 })
-local cfg = config.new(defaults, rules)
 cfg:configure(user_options, apply_options)
 local signs = cfg:get("buffer", "signs")
 cfg:validate({ "buffer", "debounce" }, 250)
 cfg:toggle({ "buffer", "signs" }, true, apply_options)
 ```
 
-`compile_definition(definition)` returns defaults and rules for `new()`.
+`new(definition)` builds an independent configuration from the option definitions.
 Use `default`, `validate` and `replace` on an option to declare its default value, validator and merge behavior.
 Omit `default` for an option with no built-in value.
 A section has a `fields` table for its children and derives its default table from them unless it supplies `default`.
@@ -164,8 +163,7 @@ the table branch defaults. `replace = true` still uses the supplied value as a w
 Each instance owns its defaults and current configuration.
 `resolve(opts?)` builds a detached candidate from defaults.
 `check(candidate)` validates a full candidate without applying it or changing the current configuration.
-`commit(candidate, apply?)` runs the optional validator and then the optional apply callback before publishing the
-candidate.
+`commit(candidate, apply?)` validates the candidate and runs the optional apply callback before publishing it.
 `configure(opts?, apply?)` combines `resolve()` and `commit()` for applying overrides to the defaults.
 `change(path, value, apply?)` writes one option using the same commit flow.
 An exact field rule can accept setting a missing option or clearing it with `nil`.
@@ -174,25 +172,12 @@ The parent table must exist, and clearing a field requires its validators to acc
 Omit `value` to invert the current value or supply `true` or `false` explicitly.
 `reset()` restores the original defaults.
 
-`schema` mirrors the configuration's shape.
-A function validates a value, and a nested table describes a section.
-`section(schema, { allow = callback })` lets a section accept an alternate non-table value.
-When `allow(value)` returns `true`, validation skips descendants of that section.
-When it returns `false`, it can also return a message describing the allowed value.
-The schema is compiled once when the instance is created.
-
-Each entry in `fields` defines a path and a `validate(value, get)` callback.
-Use `fields` for extra path rules alongside the schema.
-They run in list order after the schema rules.
+An option or section validator `validate(value, get)` receives a copy of the associated value.
 Return `true` if the value is valid or `false, message` for an error prefixed with the option path.
-The callback receives a copy of the field value.
-Use `get(...)` to read a copy from the candidate, for example to check whether the field's parent section is disabled.
+Use `get(...)` to read related values from the candidate.
 Full writes validate all field rules.
 `change()` and the read-only `validate(path, value)` validate the changed path, its ancestor rules and any rules
 below a replaced section.
-Use the `validate(candidate)` option for cross-field constraints such as a minimum that must not exceed another option's
-maximum.
-That callback sees the full candidate on every write and raises an error for invalid values.
 
 `base_tools.config.validators` provides `type(name)`, `range(min?, max?)`, `integer(min?, max?)`, `one_of(values)`,
 `optional(rule)`, `any_of(...)`, `nonempty_string()`, `list_of(item_rule)` and `map_of(value_rule, key_rule?)`.
@@ -205,20 +190,17 @@ Omit either bound with `nil` to leave that side open.
 Both pass the configuration getter to their child validators.
 
 The optional `apply(candidate)` callback runs only after validation succeeds and raises if application fails.
-The whole-config validator and apply callback receive detached copies.
+The apply callback receives a detached copy.
 If a validator or the apply callback fails, the instance keeps the previous configuration.
 Writes to the same instance from inside these callbacks raise an error.
 
-`get(...)` reads the current configuration using the same path semantics as the standalone getter below.
-
-`merge(defaults, opts?, rules?)` merges dictionaries recursively and replaces lists.
-Fields listed in `rules.replace` use the supplied value as a whole, including an empty table.
-Supplied `false` values override defaults.
-The returned table is detached from both inputs.
-
-`get(config, ...)` reads a path and copies the result.
+`get(...)` reads a path from the current configuration and copies the result.
 With no keys it returns a copy of the whole configuration.
 Missing paths return `nil`.
+
+`resolve()` merges dictionaries recursively and replaces lists.
+Options declared with `replace = true` use the supplied value as a whole, including an empty table.
+Supplied `false` values override defaults.
 
 ## User commands
 
