@@ -492,3 +492,45 @@ test.run("base-tools config validator templates support bounds, choices and opti
   test.eq(false, accepts(branch, value))
   test.eq(false, value.enabled)
 end)
+
+test.run("base-tools config validates nonempty strings and contiguous lists", function()
+  local nonempty = validators.nonempty_string()
+  assert(nonempty("lua") and nonempty(" "))
+  assert(not nonempty("") and not nonempty(1))
+
+  local strings = validators.list_of(nonempty)
+  assert(strings({}) and strings({ "path", "buffer" }))
+  assert(not strings({ filetype = "lua" }))
+  assert(not strings({ [1] = "path", [3] = "buffer" }))
+  local valid, message = strings({ "path", "" })
+  test.eq(false, valid)
+  test.eq("[2] must be a nonempty string", message)
+end)
+
+test.run("base-tools config validates map keys and values and forwards the configuration getter", function()
+  local boolean_map = validators.map_of(validators.type("boolean"), validators.type("string"))
+  assert(boolean_map({}) and boolean_map({ lua = false, rust = true }))
+  assert(not boolean_map("lua"))
+  local valid, message = boolean_map({ [1] = true })
+  test.eq(false, valid)
+  test.eq("key 1 must be string", message)
+  valid, message = boolean_map({ lua = "true" })
+  test.eq(false, valid)
+  test.eq('["lua"] must be boolean', message)
+  assert(validators.map_of(validators.type("boolean"))({ [1] = true }))
+
+  local items = validators.list_of(function(item, get)
+    return vim.startswith(item, get("prefix")), "must start with the configured prefix"
+  end)
+  local groups = validators.map_of(items, function(key, get)
+    return key == get("prefix"), "must match the configured prefix"
+  end)
+  local store = config.new({ prefix = "x", groups = { x = { "x-one" } } }, {
+    replace = { { "groups" } },
+    schema = { groups = groups },
+  })
+  store:configure({ prefix = "y", groups = { y = { "y-two" } } })
+  test.eq({ y = { "y-two" } }, store:get("groups"))
+  assert(not pcall(store.configure, store, { prefix = "y", groups = { x = { "y-two" } } }))
+  assert(not pcall(store.configure, store, { prefix = "y", groups = { y = { "x-two" } } }))
+end)

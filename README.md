@@ -195,11 +195,14 @@ maximum.
 That callback sees the full candidate on every write and raises an error for invalid values.
 
 `base_tools.config.validators` provides `type(name)`, `range(min?, max?)`, `integer(min?, max?)`, `one_of(values)`,
-`optional(rule)` and `any_of(...)`.
+`optional(rule)`, `any_of(...)`, `nonempty_string()`, `list_of(item_rule)` and `map_of(value_rule, key_rule?)`.
 Ranges use inclusive bounds and finite numbers.
 Omit either bound with `nil` to leave that side open.
 `one_of` accepts a list of scalar values, and `optional` also accepts `nil`.
 `any_of` tries the supplied validators in order and accepts the first successful alternative.
+`list_of` accepts contiguous lists, including an empty list, and reports the index of an invalid item.
+`map_of` checks all table values and can also check each key.
+Both pass the configuration getter to their child validators.
 
 The optional `apply(candidate)` callback runs only after validation succeeds and raises if application fails.
 The whole-config validator and apply callback receive detached copies.
