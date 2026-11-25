@@ -59,6 +59,7 @@ test.run("base-tools config instances own defaults, candidates and changes", fun
 
   local candidate = store:resolve({ map = {} })
   test.eq({}, candidate.map)
+  store:check(candidate)
   test.eq("close", store:get("map", "q"))
   store:commit(candidate)
   candidate.map.q = "changed"
@@ -105,6 +106,7 @@ test.run("base-tools config validates before applying and publishing writes", fu
   local ok, err = pcall(store.change, store, { "range", "min" }, 4, apply)
   assert(not ok and tostring(err):find("range.min must not exceed range.max", 1, true))
   assert(not pcall(store.commit, store, { range = { min = 4, max = 3 } }, apply))
+  assert(not pcall(store.check, store, { range = { min = 4, max = 3 } }))
   test.eq(0, calls)
   test.eq({ min = 1, max = 3 }, store:get("range"))
 
@@ -208,4 +210,17 @@ test.run("base-tools config validator templates support bounds, choices and opti
   local optional = validators.optional(validators.type("function"))
   test.eq(true, accepts(optional, nil))
   test.eq(false, accepts(optional, false))
+  local either = validators.any_of(validators.type("boolean"), validators.one_of({ "auto" }))
+  test.eq(true, accepts(either, false))
+  test.eq(true, accepts(either, "auto"))
+  test.eq(false, accepts(either, "true"))
+  local branch = validators.any_of(function(value)
+    value.enabled = true
+    return false, "first alternative failed"
+  end, function(value)
+    return value.enabled == true, "must be enabled"
+  end)
+  local value = { enabled = false }
+  test.eq(false, accepts(branch, value))
+  test.eq(false, value.enabled)
 end)

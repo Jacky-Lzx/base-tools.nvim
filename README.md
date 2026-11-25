@@ -143,7 +143,9 @@ config:change({ "buffer", "signs" }, true, apply_options)
 
 Each instance owns its defaults and current configuration.
 `resolve(opts?)` builds a detached candidate from defaults.
-`commit(candidate, apply?)` runs the optional validator and then the optional apply callback before publishing the candidate.
+`check(candidate)` validates a full candidate without applying it or changing the current configuration.
+`commit(candidate, apply?)` runs the optional validator and then the optional apply callback before publishing the
+candidate.
 `change(path, value, apply?)` replaces an existing value and uses the same commit flow.
 Paths with missing keys and `nil` values raise an error.
 `reset()` restores the original defaults.
@@ -152,13 +154,17 @@ Each entry in `fields` defines a path and a `validate(value, get)` callback.
 Return `true` if the value is valid or `false, message` for an error prefixed with the option path.
 The callback receives a copy of the field value.
 Use `get(...)` to read a copy from the candidate, for example to check whether the field's parent section is disabled.
-Full writes validate all field rules. `change()` and the read-only `validate(path, value)` validate the changed path, its ancestor rules and any rules below a replaced section.
-Use the `validate(candidate)` option for cross-field constraints such as a minimum that must not exceed another option's maximum.
+Full writes validate all field rules. `change()` and the read-only `validate(path, value)` validate the changed path,
+its ancestor rules and any rules below a replaced section.
+Use the `validate(candidate)` option for cross-field constraints such as a minimum that must not exceed another option's
+maximum.
 That callback sees the full candidate on every write and raises an error for invalid values.
 
-`base_tools.config.validators` provides `type(name)`, `range(min?, max?)`, `integer(min?, max?)`, `one_of(values)` and `optional(rule)`.
+`base_tools.config.validators` provides `type(name)`, `range(min?, max?)`, `integer(min?, max?)`, `one_of(values)`,
+`optional(rule)` and `any_of(...)`.
 Ranges use inclusive bounds and finite numbers. Omit either bound with `nil` to leave that side open.
 `one_of` accepts a list of scalar values, and `optional` also accepts `nil`.
+`any_of` tries the supplied validators in order and accepts the first successful alternative.
 
 The optional `apply(candidate)` callback runs only after validation succeeds and raises if application fails.
 The whole-config validator and apply callback receive detached copies.

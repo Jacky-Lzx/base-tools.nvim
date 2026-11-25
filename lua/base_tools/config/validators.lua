@@ -75,4 +75,28 @@ function M.optional(validate)
   end
 end
 
+---Accept a value if any of the supplied validators accepts it.
+---@param ... base_tools.ConfigFieldValidator
+---@return base_tools.ConfigFieldValidator
+function M.any_of(...)
+  local rules = { ... }
+  local count = select("#", ...)
+  assert(count > 0, "Expected at least one validator function")
+  for index = 1, count do
+    assert(type(rules[index]) == "function", "Expected a validator function")
+  end
+
+  return function(value, get)
+    local messages = {}
+    for _, validate in ipairs(rules) do
+      local valid, message = validate(vim.deepcopy(value), get)
+      if valid == true then
+        return true
+      end
+      messages[#messages + 1] = message or "is invalid"
+    end
+    return false, table.concat(messages, " or ")
+  end
+end
+
 return M

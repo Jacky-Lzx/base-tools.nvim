@@ -20,6 +20,7 @@ function M.merge(defaults, opts, rules)
 
   local replace = rules and rules.replace
   assert(replace == nil or vim.islist(replace), "Config replacement paths must be a list")
+
   for _, path in ipairs(replace or {}) do
     assert(vim.islist(path) and #path > 0, "Config replacement paths must be nonempty lists")
     local value = vim.tbl_get(overrides, unpack(path))
@@ -28,6 +29,7 @@ function M.merge(defaults, opts, rules)
       for i = 1, #path - 1 do
         parent = parent[path[i]]
       end
+
       parent[path[#path]] = value
     end
   end
@@ -105,13 +107,16 @@ local function validate_and_apply(self, snapshot, path, apply)
         end
       end
     end
+
     if options.validate then
       options.validate(get())
     end
+
     if apply then
       apply(get())
     end
   end)
+
   self._committing = false
   if not ok then
     error(err, 0)
@@ -130,6 +135,13 @@ end
 ---@return table
 function Config:resolve(opts)
   return M.merge(self._defaults, opts, self._options)
+end
+
+---Validate a full candidate without applying or publishing it.
+---@param candidate table
+function Config:check(candidate)
+  assert(type(candidate) == "table", "Config candidate must be a table")
+  validate_and_apply(self, vim.deepcopy(candidate))
 end
 
 ---Validate and optionally apply a candidate before publishing it.
@@ -151,13 +163,16 @@ end
 local function with_change(self, path, value)
   check_path(path)
   assert(value ~= nil, "Config value must not be nil")
+
   local candidate = self:get()
   local parent = candidate
   if #path > 1 then
     parent = vim.tbl_get(parent, unpack(path, 1, #path - 1))
   end
+
   local key = path[#path]
   assert(type(parent) == "table" and rawget(parent, key) ~= nil, "Config path does not exist: " .. vim.inspect(path))
+
   parent[key] = vim.deepcopy(value)
   return candidate
 end
