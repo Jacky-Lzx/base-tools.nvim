@@ -126,15 +126,18 @@ With overlapping managed mappings it skips owners that have already released the
 ## Configuration
 
 ```lua
+local validators = require("base_tools.config.validators")
 local config = require("base_tools.config").new(defaults, {
   replace = { { "compare", "keymap", "panel" } },
-  validate = function(candidate)
-    assert(type(candidate.buffer.signs) == "boolean", "buffer.signs must be boolean")
-  end,
+  fields = {
+    { path = { "buffer", "signs" }, validate = validators.type("boolean") },
+    { path = { "buffer", "debounce" }, validate = validators.range(0, 1000) },
+  },
 })
 local options = config:resolve(user_options)
 config:commit(options, apply_options)
 local signs = config:get("buffer", "signs")
+config:validate({ "buffer", "debounce" }, 250)
 config:change({ "buffer", "signs" }, true, apply_options)
 ```
 
@@ -145,11 +148,22 @@ Each instance owns its defaults and current configuration.
 Paths with missing keys and `nil` values raise an error.
 `reset()` restores the original defaults.
 
-`validate(candidate)` checks the full candidate, including the initial defaults, and raises an error for invalid values.
+Each entry in `fields` defines a path and a `validate(value, get)` callback.
+Return `true` if the value is valid or `false, message` for an error prefixed with the option path.
+The callback receives a copy of the field value.
+Use `get(...)` to read a copy from the candidate, for example to check whether the field's parent section is disabled.
+Full writes validate all field rules. `change()` and the read-only `validate(path, value)` validate the changed path, its ancestor rules and any rules below a replaced section.
+Use the `validate(candidate)` option for cross-field constraints such as a minimum that must not exceed another option's maximum.
+That callback sees the full candidate on every write and raises an error for invalid values.
+
+`base_tools.config.validators` provides `type(name)`, `range(min?, max?)`, `integer(min?, max?)`, `one_of(values)` and `optional(rule)`.
+Ranges use inclusive bounds and finite numbers. Omit either bound with `nil` to leave that side open.
+`one_of` accepts a list of scalar values, and `optional` also accepts `nil`.
+
 The optional `apply(candidate)` callback runs only after validation succeeds and raises if application fails.
-Both callbacks receive detached copies and may read the previously published configuration.
-If either callback raises, the instance keeps the previous configuration.
-Writes to the same instance from inside either callback raise an error.
+The whole-config validator and apply callback receive detached copies.
+If a validator or the apply callback fails, the instance keeps the previous configuration.
+Writes to the same instance from inside these callbacks raise an error.
 
 `get(...)` reads the current configuration using the same path semantics as the standalone getter below.
 

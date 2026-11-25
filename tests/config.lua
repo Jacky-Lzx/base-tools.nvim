@@ -1,5 +1,6 @@
 local test = dofile("tests/support.lua")
 local config = require("base_tools.config")
+local validators = require("base_tools.config.validators")
 
 test.run("base-tools config merges dictionaries and replaces lists and explicit paths", function()
   local defaults = {
@@ -120,4 +121,91 @@ test.run("base-tools config validates before applying and publishing writes", fu
   test.eq({ min = 2, max = 3 }, store:get("range"))
   store:reset()
   test.eq({ min = 1, max = 3 }, store:get("range"))
+end)
+
+test.run("base-tools config validates only affected field paths for a change", function()
+  local calls = {}
+  local debounce = validators.range(0, 1000)
+  local function track(name, validate)
+    return function(value, get)
+      calls[#calls + 1] = name
+      return validate(value, get)
+    end
+  end
+  local store = config.new({ buffer = { debounce = 100, signs = false }, mode = "quiet" }, {
+    fields = {
+      { path = { "buffer" }, validate = track("buffer", validators.type("table")) },
+      { path = { "buffer", "signs" }, validate = track("signs", validators.type("boolean")) },
+      {
+        path = { "buffer", "debounce" },
+        validate = track("debounce", function(value, get)
+          get("buffer").signs = "mutated"
+          return debounce(value)
+        end),
+      },
+      { path = { "mode" }, validate = track("mode", validators.one_of({ "quiet", "verbose" })) },
+    },
+  })
+  test.eq({ "buffer", "signs", "debounce", "mode" }, calls)
+
+  calls = {}
+  store:validate({ "buffer", "debounce" }, 0)
+  test.eq({ "buffer", "debounce" }, calls)
+  test.eq(100, store:get("buffer", "debounce"))
+
+  calls = {}
+  local applied = false
+  local ok, err = pcall(store.change, store, { "buffer", "debounce" }, 1001, function()
+    applied = true
+  end)
+  assert(not ok and tostring(err):find("buffer.debounce must be a finite number between 0 and 1000", 1, true))
+  test.eq({ "buffer", "debounce" }, calls)
+  test.eq(false, applied)
+  test.eq(100, store:get("buffer", "debounce"))
+
+  calls = {}
+  store:change({ "buffer", "debounce" }, 1000)
+  test.eq({ "buffer", "debounce" }, calls)
+  test.eq({ signs = false, debounce = 1000 }, store:get("buffer"))
+
+  calls = {}
+  assert(not pcall(store.change, store, { "buffer" }, { signs = false }))
+  test.eq({ "buffer", "signs", "debounce" }, calls)
+  test.eq({ signs = false, debounce = 1000 }, store:get("buffer"))
+
+  calls = {}
+  store:commit(store:get())
+  test.eq({ "buffer", "signs", "debounce", "mode" }, calls)
+end)
+
+test.run("base-tools config validator templates support bounds, choices and optional values", function()
+  local function accepts(rule, value)
+    return (rule(value))
+  end
+  local range = validators.range(-1, 1)
+  test.eq(true, accepts(range, -1))
+  test.eq(true, accepts(range, 1))
+  test.eq(true, accepts(range, 0.5))
+  test.eq(false, accepts(range, -1.01))
+  test.eq(false, accepts(range, "0"))
+  test.eq(false, accepts(validators.range(0), math.huge))
+  test.eq(false, accepts(validators.range(nil, 5), 0 / 0))
+  test.eq(true, accepts(validators.range(nil, 5), -10))
+  assert(not pcall(validators.range, 5, 4))
+
+  local integer = validators.integer(1, 3)
+  test.eq(true, accepts(integer, 3))
+  test.eq(false, accepts(integer, 3.5))
+  test.eq(false, accepts(integer, 0))
+
+  local values = { "auto", false }
+  local choice = validators.one_of(values)
+  values[1] = "always"
+  test.eq(true, accepts(choice, false))
+  test.eq(true, accepts(choice, "auto"))
+  test.eq(false, accepts(choice, "always"))
+
+  local optional = validators.optional(validators.type("function"))
+  test.eq(true, accepts(optional, nil))
+  test.eq(false, accepts(optional, false))
 end)
