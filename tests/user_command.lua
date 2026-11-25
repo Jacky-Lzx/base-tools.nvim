@@ -197,3 +197,69 @@ test.run("base-tools command groups delegate native path completion in a batch",
   api.nvim_buf_delete(buffer, { force = true })
   vim.fn.delete(folder, "rf")
 end)
+
+test.run("base-tools command groups generate a menu and support overriding items", function()
+  local registry = commands.new()
+  local name = "BaseToolsMenuFixture"
+  local spec = {
+    default = "menu",
+    menu = true,
+    actions = {
+      { name = "status", run = function() end },
+      { name = "export", run = function() end, complete = { "file" } },
+    },
+  }
+  local select, feedkeys = vim.ui.select, api.nvim_feedkeys
+  local items, format, prompt, choose, fed
+  vim.ui.select = function(choices, opts, on_choice)
+    items, format, prompt, choose = choices, opts.format_item, opts.prompt, on_choice
+  end
+  api.nvim_feedkeys = function(keys, mode, escape)
+    test.eq({ "n", true }, { mode, escape })
+    fed = keys
+  end
+
+  registry.create_group(name, spec)
+  test.eq({ "menu" }, vim.fn.getcompletion(name .. " men", "cmdline", true))
+  vim.cmd(name)
+  test.eq(name, prompt)
+  test.eq({ "status", "export" }, vim.tbl_map(format, items))
+  choose(nil)
+  test.eq(nil, fed)
+  choose(items[2])
+  test.eq(":" .. name .. " export ", fed)
+
+  local selected, first_win = nil, api.nvim_get_current_win()
+  spec.menu = {
+    prompt = "Custom actions",
+    items = function(defaults)
+      test.eq("status", defaults[1].id)
+      test.eq("export", defaults[2].label)
+      defaults[2].label = "Export file"
+      return {
+        defaults[2],
+        {
+          id = "inspect",
+          label = "Inspect",
+          run = function()
+            selected = api.nvim_get_current_win()
+          end,
+        },
+      }
+    end,
+  }
+  local cleanup = registry.create_group(name, spec)
+  vim.cmd(name .. " menu")
+  test.eq("Custom actions", prompt)
+  test.eq({ "Export file", "Inspect" }, vim.tbl_map(format, items))
+  vim.cmd(name .. " menu")
+  local other = api.nvim_open_win(api.nvim_get_current_buf(), true, { split = "right" })
+  choose(items[2])
+  test.eq(first_win, selected)
+  api.nvim_win_close(other, true)
+
+  spec.actions[#spec.actions + 1] = { name = "menu", run = function() end }
+  assert(not pcall(registry.create_group, name, spec), "Synthetic and explicit menu actions must not collide")
+  cleanup()
+  vim.ui.select, api.nvim_feedkeys = select, feedkeys
+end)

@@ -74,10 +74,20 @@ end
 ---@field run fun(args: vim.api.keyset.create_user_command.command_args)
 ---@field complete? table<integer, base_tools.UserCommandProvider> Providers by argument position.
 
+---@class base_tools.UserCommandMenuItem
+---@field id string
+---@field label string
+---@field run fun()
+
+---@class base_tools.UserCommandMenu
+---@field prompt? string
+---@field items? fun(defaults: base_tools.UserCommandMenuItem[]): base_tools.UserCommandMenuItem[]
+
 ---@class base_tools.UserCommandGroup
 ---@field actions base_tools.UserCommandAction[] Actions in completion order.
 ---@field default? string Action to run when the command has no arguments.
 ---@field on_unknown? fun(args: vim.api.keyset.create_user_command.command_args)
+---@field menu? boolean|base_tools.UserCommandMenu
 
 local function match(candidates, lead)
   if lead == "" then
@@ -89,6 +99,52 @@ local function match(candidates, lead)
   return vim.tbl_filter(function(value)
     return vim.startswith(value, lead)
   end, candidates)
+end
+
+local function command_menu(name, spec, escape_candidate)
+  local menu = spec.menu == true and {} or spec.menu
+  assert(type(menu) == "table", "Command group menu must be a boolean or table")
+  assert(menu.prompt == nil or type(menu.prompt) == "string", "Expected a command menu prompt")
+  assert(menu.items == nil or type(menu.items) == "function", "Expected a command menu items provider")
+
+  local defaults = {}
+  for _, action in ipairs(spec.actions) do
+    local keys = ":" .. name .. " " .. escape_candidate(action.name) .. " "
+    defaults[#defaults + 1] = {
+      id = action.name,
+      label = action.name,
+      run = function()
+        api.nvim_feedkeys(keys, "n", true)
+      end,
+    }
+  end
+
+  return function()
+    local win = api.nvim_get_current_win()
+    local items = vim.deepcopy(defaults)
+    if menu.items then
+      items = menu.items(items)
+    end
+
+    if #items == 0 then
+      return
+    end
+
+    vim.ui.select(items, {
+      prompt = menu.prompt or name,
+      format_item = function(item)
+        return item.label
+      end,
+    }, function(item)
+      if item and api.nvim_win_is_valid(win) then
+        if api.nvim_get_current_win() ~= win then
+          api.nvim_set_current_win(win)
+        end
+
+        item.run()
+      end
+    end)
+  end
 end
 
 --- Build a command definition for use with a registry's create_many().
@@ -124,6 +180,12 @@ function M.group(name, spec, opts)
 
     actions[action.name] = action
     names[#names + 1] = escape_candidate(action.name)
+  end
+
+  if spec.menu then
+    assert(not actions.menu, "The generated menu conflicts with a menu action")
+    actions.menu = { run = command_menu(name, spec, escape_candidate) }
+    names[#names + 1] = "menu"
   end
 
   assert(spec.default == nil or actions[spec.default], "Unknown default action: " .. tostring(spec.default))

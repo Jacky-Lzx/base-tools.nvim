@@ -171,6 +171,17 @@ Function providers receive `lead`, `line`, `cursor`, the already completed `args
 the one-based argument `index`.
 The module's `group(name, spec, opts?)` returns a definition tuple for `create_many()`.
 
+Set `menu = true` to add a `menu` subcommand. It uses `vim.ui.select()` to list
+the actions in declaration order. Choosing a generated item fills the command
+line with the action and leaves it ready for arguments or confirmation.
+Set `default = "menu"` to open it when no action is supplied.
+
+A menu table can set `prompt` and `items(defaults)`. The callback gets a fresh
+copy of the generated items each time the menu opens and returns the list to
+display. Each item has an `id`, a `label` and a `run()` callback. The callback
+can reorder, filter, or rename items, replace their handlers, or return a
+custom list.
+
 ## Colors and highlights
 
 ```lua
