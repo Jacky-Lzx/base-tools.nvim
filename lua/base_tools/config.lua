@@ -26,11 +26,8 @@ local function check_path(path)
 end
 
 local function apply_choice_defaults(defaults, overrides, choices)
-  assert(vim.islist(choices), "Config choice defaults must be a list")
   for _, choice in ipairs(choices) do
-    assert(type(choice) == "table" and type(choice.defaults) == "table", "Config choice defaults must be a table")
     local path = choice.path
-    check_path(path)
     if
       type(vim.tbl_get(overrides, unpack(path))) == "table" and type(vim.tbl_get(defaults, unpack(path))) ~= "table"
     then
@@ -52,9 +49,7 @@ local function merge(defaults, opts, rules)
 
   local overrides = vim.deepcopy(opts or {})
   local base = vim.deepcopy(defaults)
-  if #rules.choice_defaults > 0 then
-    apply_choice_defaults(base, overrides, rules.choice_defaults)
-  end
+  apply_choice_defaults(base, overrides, rules.choice_defaults)
   local merged = vim.tbl_deep_extend("force", base, overrides)
 
   for _, path in ipairs(rules.replace) do
@@ -218,6 +213,7 @@ compile_definition = function(definition, prefix, rules, visited)
     assert(validate == nil or type(validate) == "function", "Config definition validate must be a function")
     assert(entry.replace == nil or type(entry.replace) == "boolean", "Config definition replace must be boolean")
     assert(entry.allow == nil, "Config definitions use choices for alternate values")
+    assert(entry.choices ~= nil or entry.default_choice == nil, "Config default_choice requires choices")
     if entry.replace then
       rules.replace[#rules.replace + 1] = path
     end
@@ -229,11 +225,9 @@ compile_definition = function(definition, prefix, rules, visited)
         rules.section_checks[#rules.section_checks + 1] = { path = path, validate = validate }
       end
     elseif entry.fields ~= nil then
-      assert(entry.default_choice == nil, "Config default_choice requires choices")
       rules.fields[#rules.fields + 1] = { path = path, validate = validate_section }
       defaults[key] = compile_section(entry, path, rules, visited)
     else
-      assert(entry.default_choice == nil, "Config default_choice requires choices")
       if validate then
         rules.fields[#rules.fields + 1] = { path = path, validate = validate }
       end
@@ -305,6 +299,7 @@ local function validate_and_apply(self, snapshot, path, apply)
 end
 
 local function commit(self, candidate, path, apply)
+  assert(apply == nil or type(apply) == "function", "Config apply must be a function")
   validate_and_apply(self, candidate, path, apply)
   self._current = candidate
 end
@@ -329,7 +324,6 @@ end
 ---@param opts? table
 ---@param apply? fun(candidate: table) Apply the validated configuration, raising on failure.
 function Config:configure(opts, apply)
-  assert(apply == nil or type(apply) == "function", "Config apply must be a function")
   commit(self, merge(self._defaults, opts, self._rules), nil, apply)
 end
 
@@ -383,7 +377,6 @@ end
 ---@param value any
 ---@param apply? fun(candidate: table) Apply the validated configuration, raising on failure.
 function Config:change(path, value, apply)
-  assert(apply == nil or type(apply) == "function", "Config apply must be a function")
   local candidate = with_change(self, path, value)
   commit(self, candidate, vim.deepcopy(path), apply)
 end
@@ -420,7 +413,6 @@ function M.new(definition)
 
   local config = setmetatable({
     _defaults = initial,
-    _current = initial,
     _rules = rules,
   }, Config)
   config:reset()
