@@ -137,3 +137,29 @@ test.run("timers, lifecycle and stateless helpers accept the same context", func
   fails("two.nvim [color.hex]: Expected an RGB color", require("base_tools.color").hex, "bad", { context = second })
   fails("one.nvim [keys.encode]:", require("base_tools.keys").encode, false, nil, { context = first })
 end)
+
+test.run("context notifications preserve the level and attach the owner once", function()
+  local notify = vim.notify
+  local calls = {}
+  vim.notify = function(message, level, opts)
+    calls[#calls + 1] = { message, level, opts }
+  end
+
+  local warn, err = vim.log.levels.WARN, vim.log.levels.ERROR
+  local opts = { source = "override", title = "Files" }
+  local ok, failure = pcall(function()
+    first:notify("No file selected", warn, opts)
+    local config = require("base_tools.config").new({}, { context = first })
+    local _, config_error = pcall(config.resolve, config, false)
+    first:notify(config_error, err)
+    second:notify("two.nvim: Already attributed", err)
+  end)
+  vim.notify = notify
+  assert(ok, failure)
+  test.eq({ source = "override", title = "Files" }, opts)
+  test.eq({
+    { "one.nvim: No file selected", warn, { source = "one.nvim", title = "Files" } },
+    { "one.nvim [config.resolve]: Config options must be a table", err, { source = "one.nvim" } },
+    { "two.nvim: Already attributed", err, { source = "two.nvim" } },
+  }, calls)
+end)

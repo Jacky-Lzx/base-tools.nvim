@@ -27,14 +27,22 @@ local function check_owner(name, existing, previous, check)
   end
 end
 
-local function install(name, callback, opts, buffer, replace)
+local function install(name, callback, opts, buffer, replace, on_error)
   opts = vim.tbl_extend("force", {}, opts or {}, { force = replace })
   local action = callback
 
   -- Give each registration its own Lua callback identity.
   if type(callback) == "function" then
     action = function(args)
-      return callback(args)
+      if not on_error then
+        return callback(args)
+      end
+
+      local ok, result = pcall(callback, args)
+      if ok then
+        return result
+      end
+      return on_error(result, name, args)
     end
   end
 
@@ -253,11 +261,23 @@ function M.group(name, spec, opts)
   return { name, run, options }
 end
 
+---@alias base_tools.UserCommandErrorHandler fun(err: any, name: string, args: vim.api.keyset.create_user_command.command_args)
+---@class base_tools.UserCommandRegistryOptions
+---@field context? base_tools.Context
+---@field on_error? base_tools.UserCommandErrorHandler Receives exceptions from registered Lua callbacks.
+
 --- Create an isolated registry for a consumer's global and buffer-local commands.
----@param opts? { context?: base_tools.Context }
+---@param opts? base_tools.UserCommandRegistryOptions
 ---@return base_tools.UserCommandRegistry
 function M.new(opts)
-  local context = opts and opts.context
+  opts = opts or {}
+  local context, on_error = opts.context, opts.on_error
+  Context.check(
+    context,
+    "user_command.new",
+    on_error == nil or type(on_error) == "function",
+    "Expected an error handler"
+  )
   ---@class base_tools.UserCommandRegistry
   local registry = {}
   local owned = {}
@@ -301,7 +321,7 @@ function M.new(opts)
     owned[scope] = owned[scope] or {}
     local existing = Context.call(context, operation, snapshot, buffer)[name]
     check_owner(name, existing, owned[scope][name], check)
-    Context.call(context, operation, install, name, callback, opts, buffer, existing ~= nil)
+    Context.call(context, operation, install, name, callback, opts, buffer, existing ~= nil, on_error)
     return remember(name, buffer, snapshot(buffer)[name])
   end
 
@@ -350,7 +370,7 @@ function M.new(opts)
     local ok, err = pcall(function()
       for i, definition in ipairs(definitions) do
         local name, callback, opts = definition[1], definition[2], definition[3]
-        install(name, callback, opts, buffer, before[name] ~= nil)
+        install(name, callback, opts, buffer, before[name] ~= nil, on_error)
         count = i
       end
     end)

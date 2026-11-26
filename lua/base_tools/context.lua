@@ -3,6 +3,7 @@ local M = {}
 ---@class base_tools.Context
 ---@field private _owner string
 local Context = {}
+Context.__index = Context
 
 --- Create an error context shared by the modules a plugin uses.
 ---@param owner string Plugin name shown in diagnostics.
@@ -10,6 +11,19 @@ local Context = {}
 function M.new(owner)
   assert(type(owner) == "string" and owner:find("%S") and not owner:find("%c"), "Expected a plugin name")
   return setmetatable({ _owner = owner }, Context)
+end
+
+--- Notify with the plugin name in the message and as the notification source.
+---@param message any Message text or an error to format.
+---@param level? integer One of vim.log.levels.
+---@param opts? table Additional options passed to vim.notify.
+function Context:notify(message, level, opts)
+  local text = tostring(message)
+  local prefix = self._owner .. ": "
+  if not vim.startswith(text, prefix) and not vim.startswith(text, self._owner .. " [") then
+    text = prefix .. text
+  end
+  return vim.notify(text, level, vim.tbl_extend("force", {}, opts or {}, { source = self._owner }))
 end
 
 ---@private

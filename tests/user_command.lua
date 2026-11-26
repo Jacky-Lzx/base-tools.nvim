@@ -263,3 +263,49 @@ test.run("base-tools command groups generate a menu and support overriding items
   cleanup()
   vim.ui.select, api.nvim_feedkeys = select, feedkeys
 end)
+
+test.run("base-tools registries can handle exceptions from Lua commands and subcommands", function()
+  local context = require("base_tools.context").new("command-fixture.nvim")
+  local problem = {}
+  local errors = {}
+  local registry = commands.new({
+    context = context,
+    on_error = function(err, name, args)
+      assert(err == problem)
+      errors[#errors + 1] = { name, args.args, args.bang }
+    end,
+  })
+  local function fail()
+    error(problem, 0)
+  end
+
+  local single = "BaseToolsErrorSingle"
+  local group = "BaseToolsErrorGroup"
+  local clear_single = registry.create(single, fail, { nargs = "?", bang = true })
+  local cleanups = registry.create_many({
+    commands.group(group, {
+      actions = {
+        { name = "run", run = fail },
+        {
+          name = "skip",
+          run = function()
+            return nil, "ordinary return"
+          end,
+        },
+      },
+    }, { context = context }),
+  })
+  vim.cmd(single .. "! two words")
+  vim.cmd(group .. " run")
+  vim.cmd(group .. " skip")
+  test.eq({ { single, "two words", true }, { group, "run", false } }, errors)
+
+  cleanups[1]()
+  clear_single()
+  local clear_unhandled = commands.new({ context = context }).create(single, function()
+    error("unhandled callback", 0)
+  end)
+  local ok, err = pcall(vim.cmd, single)
+  assert(not ok and tostring(err):find("unhandled callback", 1, true))
+  clear_unhandled()
+end)

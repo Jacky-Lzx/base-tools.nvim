@@ -29,6 +29,11 @@ For example, an invalid width is reported as
 `my-plugin.nvim [config.resolve]: width must be a finite number greater than or equal to 10`.
 Operations without a context return unprefixed errors.
 
+`context:notify(message, level?, opts?)` forwards to `vim.notify` with the
+plugin name as the source. It also prefixes the message for display in
+`:messages` unless it already carries the plugin's prefix. The log level and
+other notification options are passed through.
+
 Pass `context` in the optional options table when opening a float or preview,
 attaching a footer, resolving or installing a keymap, or constructing a command
 registry or scrollbar. A lifecycle takes the options table after its module
@@ -37,7 +42,7 @@ and `color.mix()` also accept the context in their options table.
 
 Objects retain their context. Configuration sections, float mappings and
 border labels, and preview scrollbars inherit it. Plugin callbacks continue
-to propagate their own errors. Process launch errors retain their existing
+to propagate their own errors by default. Process launch errors retain their existing
 `callback(nil, launch_error)` delivery, and completed processes retain the
 original exit code and output. The context module can be loaded independently
 of the Neovim version check.
@@ -256,6 +261,22 @@ Pass a buffer number for a buffer-local command or `0` for the current buffer.
 Omit the buffer to register a global command.
 Registration rejects commands owned elsewhere.
 Cleanup checks ownership again so a later replacement keeps its command.
+
+Pass `on_error = function(err, name, args) ... end` to `new()` to handle
+exceptions from that registry's Lua command callbacks, including subcommands.
+The handler receives the original error, the registered command name, and
+Neovim's command arguments. Commands propagate exceptions normally when no
+handler is supplied. Ex-string commands use Neovim's own error handling.
+
+```lua
+local context = require("base_tools.context").new("my-plugin.nvim")
+local commands = require("base_tools.user_command").new({
+  context = context,
+  on_error = function(err)
+    context:notify(err, vim.log.levels.ERROR)
+  end,
+})
+```
 
 Use `create_many(definitions, buffer?)` for several commands in the same scope.
 Each definition is `{ name, callback, opts? }`.
