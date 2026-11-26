@@ -30,6 +30,7 @@ end
 local function apply_choice_defaults(defaults, overrides, choices)
   for _, choice in ipairs(choices) do
     local path = choice.path
+
     if
       type(vim.tbl_get(overrides, unpack(path))) == "table" and type(vim.tbl_get(defaults, unpack(path))) ~= "table"
     then
@@ -39,8 +40,10 @@ local function apply_choice_defaults(defaults, overrides, choices)
         if type(parent[key]) ~= "table" then
           parent[key] = {}
         end
+
         parent = parent[key]
       end
+
       parent[path[#path]] = vim.deepcopy(choice.defaults)
     end
   end
@@ -52,6 +55,7 @@ local function merge(defaults, opts, rules)
   local overrides = vim.deepcopy(opts or {})
   local base = vim.deepcopy(defaults)
   apply_choice_defaults(base, overrides, rules.choice_defaults)
+
   local merged = vim.tbl_deep_extend("force", base, overrides)
 
   for _, path in ipairs(rules.replace) do
@@ -268,6 +272,7 @@ end
 
 local function validate_and_apply(self, snapshot, path, apply)
   assert(not self._committing, "Cannot validate or write config from a validation or apply callback")
+
   local fields = self._rules.fields
   if #fields == 0 and not apply then
     return
