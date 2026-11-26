@@ -463,7 +463,7 @@ local function release(self)
   end
 end
 
---- Bind a Lua action while this preview has focus.
+--- Bind a Lua action in the displayed buffer for the selected keymap scope.
 ---@param mode string
 ---@param lhs string
 ---@param action function
@@ -583,6 +583,7 @@ function M.open(opts)
     buf = opts.buf,
     enter = opts.enter,
     buf_options = opts.buf_options,
+    keymap_scope = opts.keymap_scope,
     win_options = vim.tbl_extend("force", { wrap = true, smoothscroll = true }, opts.win_options or {}),
   })
   return mount(target, opts)

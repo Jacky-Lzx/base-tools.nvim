@@ -107,3 +107,39 @@ test.run("preview detach restores mappings in its borrowed window", function()
   test.eq(nil, vim.fn.maparg("q", "n", false, true).callback)
   api.nvim_win_close(win, true)
 end)
+
+test.run("dedicated preview mappings survive focus changes without changing identity", function()
+  local api = vim.api
+  local origin = api.nvim_get_current_win()
+  local preview = require("base_tools.preview").open({
+    config = { relative = "editor", row = 1, col = 2, width = 12, height = 2 },
+    buf_options = { bufhidden = "hide" },
+    keymap_scope = "buffer",
+    enter = true,
+  })
+  local first, second = preview.buf, api.nvim_create_buf(false, true)
+
+  local function callback(buf)
+    for _, mapping in ipairs(api.nvim_buf_get_keymap(buf, "n")) do
+      if mapping.lhs == "q" then
+        return mapping.callback
+      end
+    end
+  end
+
+  preview:map("n", "q", function() end)
+  local previous = assert(callback(first))
+  api.nvim_set_current_win(origin)
+  test.eq(previous, callback(first))
+  api.nvim_set_current_win(preview.win)
+  test.eq(previous, callback(first))
+
+  api.nvim_set_current_win(origin)
+  api.nvim_win_set_buf(preview.win, second)
+  test.eq(nil, callback(first))
+  assert(callback(second))
+  api.nvim_win_close(preview.win, true)
+  test.eq(nil, callback(second))
+  preview:close()
+  api.nvim_buf_delete(second, { force = true })
+end)

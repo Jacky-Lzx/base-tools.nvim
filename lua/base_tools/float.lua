@@ -9,6 +9,7 @@ local api = vim.api
 ---@field buf_options? table<string, any>
 ---@field win_options? table<string, any>
 ---@field border_labels? base_tools.BorderLabels
+---@field keymap_scope? "focus"|"buffer" Keep mappings during focus changes for dedicated buffers with "buffer".
 
 ---@class base_tools.FloatMapping
 ---@field install fun(buf: integer): fun()
@@ -27,6 +28,7 @@ local api = vim.api
 ---@field private borrowed_win? boolean
 ---@field private border_labels? table
 ---@field private keymaps? base_tools.FloatKeymaps
+---@field private buffer_keymaps? boolean
 local Float = {}
 Float.__index = Float
 
@@ -95,10 +97,11 @@ local function release_keymaps(view)
 end
 
 local function refresh_keymaps(view, state)
-  if not state.focused or api.nvim_get_current_win() ~= view.win then
+  local win = view.win
+  if not win or not api.nvim_win_is_valid(win) or not (state.focused or view.buffer_keymaps) then
     return
   end
-  local buf = api.nvim_get_current_buf()
+  local buf = api.nvim_win_get_buf(win)
   if state.buf == buf then
     return
   end
@@ -124,7 +127,9 @@ local function watch_keymaps(view)
       callback = function()
         if api.nvim_get_current_win() == view.win then
           state.focused = false
-          deactivate(state)
+          if not view.buffer_keymaps then
+            deactivate(state)
+          end
         end
       end,
     }),
@@ -132,7 +137,9 @@ local function watch_keymaps(view)
     -- current window during BufEnter. WinEnter and WinLeave track real focus.
     api.nvim_create_autocmd("BufEnter", {
       callback = function()
-        refresh_keymaps(view, state)
+        if api.nvim_get_current_win() == view.win then
+          refresh_keymaps(view, state)
+        end
       end,
     }),
     api.nvim_create_autocmd("WinClosed", {
@@ -147,7 +154,7 @@ local function watch_keymaps(view)
   return state
 end
 
---- Bind a Lua action in the buffer displayed by this float while it has focus.
+--- Bind a Lua action in the displayed buffer for the selected keymap scope.
 ---@param mode string A single Neovim mode such as n or i.
 ---@param lhs string
 ---@param action function
@@ -215,10 +222,13 @@ end
 ---@param opts base_tools.FloatOptions
 ---@return base_tools.Float
 function M.open(opts)
+  local scope = opts.keymap_scope or "focus"
+  assert(scope == "focus" or scope == "buffer", "base-tools.float: invalid keymap scope")
   local owned = opts.buf == nil
   local view = setmetatable({
     buf = owned and M.scratch(vim.tbl_extend("force", { bufhidden = "wipe" }, opts.buf_options or {})) or opts.buf,
     owned = owned,
+    buffer_keymaps = scope == "buffer",
   }, Float)
 
   local ok, err = pcall(function()

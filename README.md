@@ -375,9 +375,14 @@ A supplied buffer remains under the caller's ownership and follows its own `bufh
 ### Float keymaps
 
 `view:map(mode, lhs, callback, opts?)` works on floats and previews. It installs
-a buffer-local mapping while the window has focus. The binding follows changes
-to the displayed buffer and restores the previous mapping on focus loss,
-buffer switch, close, or detach. The returned function removes it early.
+a buffer-local mapping while the window has focus by default. A float or
+preview opened with `keymap_scope = "buffer"` keeps the same mapping across
+focus changes. Use this scope when each displayed buffer is dedicated to the
+float, so a keymap picker can verify the mapping while it has focus.
+
+In either scope the binding follows the displayed buffer and restores the
+previous mapping on buffer switch, close, or detach. The default focus scope
+also restores it on focus loss. The returned function removes it early.
 
 ```lua
 local unmap = view:map("n", "q", function()
