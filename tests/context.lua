@@ -138,7 +138,7 @@ test.run("timers, lifecycle and stateless helpers accept the same context", func
   fails("one.nvim [keys.encode]:", require("base_tools.keys").encode, false, nil, { context = first })
 end)
 
-test.run("context notifications preserve the level and attach the owner once", function()
+test.run("context notifications supply a title and body with an attributed fallback", function()
   local notify = vim.notify
   local calls = {}
   vim.notify = function(message, level, opts)
@@ -153,13 +153,19 @@ test.run("context notifications preserve the level and attach the owner once", f
     local _, config_error = pcall(config.resolve, config, false)
     first:notify(config_error, err)
     second:notify("two.nvim: Already attributed", err)
+    first:notify("Fallback", warn, { body = "Display override" })
   end)
   vim.notify = notify
   assert(ok, failure)
   test.eq({ source = "override", title = "Files" }, opts)
   test.eq({
-    { "one.nvim: No file selected", warn, { source = "one.nvim", title = "Files" } },
-    { "one.nvim [config.resolve]: Config options must be a table", err, { source = "one.nvim" } },
-    { "two.nvim: Already attributed", err, { source = "two.nvim" } },
+    { "one.nvim: No file selected", warn, { source = "one.nvim", title = "Files", body = "No file selected" } },
+    {
+      "one.nvim [config.resolve]: Config options must be a table",
+      err,
+      { source = "one.nvim", title = "one.nvim", body = "[config.resolve]: Config options must be a table" },
+    },
+    { "two.nvim: Already attributed", err, { source = "two.nvim", title = "two.nvim", body = "Already attributed" } },
+    { "one.nvim: Fallback", warn, { source = "one.nvim", title = "one.nvim", body = "Display override" } },
   }, calls)
 end)

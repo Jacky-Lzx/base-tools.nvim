@@ -30,9 +30,11 @@ For example, an invalid width is reported as
 Operations without a context return unprefixed errors.
 
 `context:notify(message, level?, opts?)` forwards to `vim.notify` with the
-plugin name as the source. It also prefixes the message for display in
-`:messages` unless it already carries the plugin's prefix. The log level and
-other notification options are passed through.
+plugin name as the source and default title. It supplies the unprefixed text
+as `opts.body` for providers that display a separate title. Neovim's native
+notifier still receives the message with the plugin prefix for `:messages`.
+Set `opts.title` or `opts.body` to override the displayed title or body.
+Other notification options and the log level are passed through.
 
 Pass `context` in the optional options table when opening a float or preview,
 attaching a footer, resolving or installing a keymap, or constructing a command

@@ -13,17 +13,25 @@ function M.new(owner)
   return setmetatable({ _owner = owner }, Context)
 end
 
---- Notify with the plugin name in the message and as the notification source.
+--- Notify using the plugin name as the default title and the source.
 ---@param message any Message text or an error to format.
 ---@param level? integer One of vim.log.levels.
----@param opts? table Additional options passed to vim.notify.
+---@param opts? table Additional options passed to vim.notify, including title or body overrides.
 function Context:notify(message, level, opts)
+  local owner = self._owner
   local text = tostring(message)
-  local prefix = self._owner .. ": "
-  if not vim.startswith(text, prefix) and not vim.startswith(text, self._owner .. " [") then
+  local prefix = owner .. ": "
+  local body = text
+  if vim.startswith(text, prefix) then
+    body = text:sub(#prefix + 1)
+  elseif vim.startswith(text, owner .. " [") then
+    body = text:sub(#owner + 2)
+  else
     text = prefix .. text
   end
-  return vim.notify(text, level, vim.tbl_extend("force", {}, opts or {}, { source = self._owner }))
+
+  local options = vim.tbl_extend("force", { title = owner, body = body }, opts or {}, { source = owner })
+  return vim.notify(text, level, options)
 end
 
 ---@private
