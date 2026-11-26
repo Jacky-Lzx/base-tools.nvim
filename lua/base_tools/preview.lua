@@ -463,6 +463,16 @@ local function release(self)
   end
 end
 
+--- Bind a Lua action while this preview has focus.
+---@param mode string
+---@param lhs string
+---@param action function
+---@param opts? table Options for vim.keymap.set(). The preview chooses the buffer.
+---@return fun() unmap
+function Preview:map(mode, lhs, action, opts)
+  return self.float:map(mode, lhs, action, opts)
+end
+
 --- Close an owned preview, or release the decorations of an attached preview.
 function Preview:close()
   if self.close_event then

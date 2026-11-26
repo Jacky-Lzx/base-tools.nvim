@@ -372,6 +372,19 @@ When `open` allocates the buffer, the handle owns it and releases it on close.
 A supplied buffer remains under the caller's ownership and follows its own `bufhidden` option.
 `float.scratch(buf_options?)` is an alias for `buffer.scratch(buf_options?)`.
 
+### Float keymaps
+
+`view:map(mode, lhs, callback, opts?)` works on floats and previews. It installs
+a buffer-local mapping while the window has focus. The binding follows changes
+to the displayed buffer and restores the previous mapping on focus loss,
+buffer switch, close, or detach. The returned function removes it early.
+
+```lua
+local unmap = view:map("n", "q", function()
+  view:close()
+end, { nowait = true, desc = "Close preview" })
+```
+
 ### Border labels
 
 Set any of the left, center, and right positions on the top and bottom

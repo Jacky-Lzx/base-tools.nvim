@@ -42,3 +42,68 @@ test.run("base-tools.float", function()
   eq(before, { #api.nvim_list_wins(), #api.nvim_list_bufs() })
   api.nvim_buf_delete(borrowed, { force = true })
 end)
+
+test.run("float mappings follow focus and the displayed buffer", function()
+  local api = vim.api
+  local float = require("base_tools.float")
+  local origin = api.nvim_get_current_win()
+  local first = float.scratch()
+  local second = float.scratch()
+  local previous = function() end
+  local action = function() end
+  local config = { relative = "editor", row = 1, col = 2, width = 12, height = 2 }
+  vim.keymap.set("n", "q", previous, { buffer = first })
+
+  local function mapping(buf)
+    return api.nvim_buf_call(buf, function()
+      return vim.fn.maparg("q", "n", false, true)
+    end)
+  end
+
+  api.nvim_win_set_buf(origin, first)
+  local view = float.open({ config = config, buf = first })
+  local unmap = view:map("n", "q", action, { nowait = true })
+  test.eq(previous, mapping(first).callback)
+
+  -- Replacing a buffer in the background must not install the float's keys.
+  api.nvim_win_set_buf(view.win, second)
+  test.eq(nil, mapping(second).callback)
+  api.nvim_win_set_buf(view.win, first)
+  api.nvim_set_current_win(view.win)
+  local installed = mapping(first)
+  test.eq(1, installed.nowait)
+  assert(installed.callback ~= previous)
+
+  api.nvim_win_set_buf(view.win, second)
+  test.eq(previous, mapping(first).callback)
+  test.eq(1, mapping(second).nowait)
+  api.nvim_set_current_win(origin)
+  test.eq(nil, mapping(second).callback)
+  api.nvim_set_current_win(view.win)
+  test.eq(1, mapping(second).nowait)
+
+  unmap()
+  unmap()
+  test.eq(nil, mapping(second).callback)
+  view:map("n", "q", action, { nowait = true })
+  api.nvim_win_close(view.win, true)
+  test.eq(nil, mapping(second).callback)
+  test.eq(previous, mapping(first).callback)
+  view:close()
+  api.nvim_buf_delete(first, { force = true })
+  api.nvim_buf_delete(second, { force = true })
+end)
+
+test.run("preview detach restores mappings in its borrowed window", function()
+  local api = vim.api
+  local buf = api.nvim_get_current_buf()
+  local win = api.nvim_open_win(buf, true, { relative = "editor", row = 1, col = 2, width = 12, height = 2 })
+  local preview = require("base_tools.preview").attach(win)
+
+  preview:map("n", "q", function() end, { nowait = true })
+  test.eq(1, vim.fn.maparg("q", "n", false, true).nowait)
+  assert(preview:detach())
+  assert(api.nvim_win_is_valid(win))
+  test.eq(nil, vim.fn.maparg("q", "n", false, true).callback)
+  api.nvim_win_close(win, true)
+end)
