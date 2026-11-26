@@ -1,3 +1,4 @@
+local Context = require("base_tools.context")
 local api = vim.api
 local text = require("base_tools.text")
 local ns = api.nvim_create_namespace("base-tools-border-labels")
@@ -151,7 +152,7 @@ local function compose(labels, width, edge)
 end
 
 function Layout:refresh(native_update, restore)
-  local window = api.nvim_win_get_config(self.win)
+  local window = Context.call(self.context, "border_labels.refresh", api.nvim_win_get_config, self.win)
   local width = api.nvim_win_get_width(self.win)
   local update = restore or {}
 
@@ -171,7 +172,7 @@ function Layout:refresh(native_update, restore)
   self.width = width
 
   if next(update) then
-    api.nvim_win_set_config(self.win, update)
+    Context.call(self.context, "border_labels.refresh", api.nvim_win_set_config, self.win, update)
   end
 end
 
@@ -227,7 +228,9 @@ local function watch(layout)
 end
 
 function Layout:set(labels)
-  local current = api.nvim_win_get_config(self.win)
+  local operation = "border_labels.set"
+  local current = Context.call(self.context, operation, api.nvim_win_get_config, self.win)
+  Context.check(self.context, operation, type(labels) == "table", "Expected border labels")
   local layouts = vim.tbl_extend("force", {}, self.edges)
   local update = {}
 
@@ -237,10 +240,11 @@ function Layout:set(labels)
       local previous = layouts[name]
       local slots = {}
       if changes ~= false then
+        Context.check(self.context, operation, type(changes) == "table", "Expected labels for the " .. name .. " edge")
         slots = vim.tbl_extend("force", {}, previous and previous.slots or {})
         for _, alignment in ipairs(alignments) do
           if changes[alignment] ~= nil then
-            slots[alignment] = normalize(changes[alignment], edge.highlight)
+            slots[alignment] = Context.call(self.context, operation, normalize, changes[alignment], edge.highlight)
           end
         end
       end
@@ -267,8 +271,10 @@ function Layout:set(labels)
   return false
 end
 
-function M.new(win)
-  return setmetatable({ win = win, edges = {} }, Layout)
+---@param win integer
+---@param opts? { context?: base_tools.Context }
+function M.new(win, opts)
+  return setmetatable({ win = win, edges = {}, context = opts and opts.context }, Layout)
 end
 
 return M

@@ -1,16 +1,20 @@
 require("base_tools")
 
+local Context = require("base_tools.context")
 local M = {}
 
 --- Read the global definition of a highlight group, following its links.
 --- Missing groups and link cycles return an empty definition.
 ---@param name string
+---@param opts? { context?: base_tools.Context }
 ---@return vim.api.keyset.hl_info
-function M.resolve(name)
+function M.resolve(name, opts)
+  local context = opts and opts.context
   local seen = {}
   while name and not seen[name] do
     seen[name] = true
-    local definition = vim.api.nvim_get_hl(0, { name = name, link = true, create = false })
+    local definition =
+      Context.call(context, "highlight.resolve", vim.api.nvim_get_hl, 0, { name = name, link = true, create = false })
     if not definition.link then
       return definition
     end

@@ -1,7 +1,9 @@
 ---Restartable one-shot timers whose callbacks run on Neovim's main loop.
+local Context = require("base_tools.context")
 local M = {}
 
 ---@class base_tools.Timer
+---@field private context? base_tools.Context
 ---@field private handle uv.uv_timer_t?
 ---@field private pending fun()?
 ---@field private closed boolean?
@@ -12,9 +14,11 @@ Timer.__index = Timer
 ---@param delay_ms number
 ---@param callback fun()
 function Timer:start(delay_ms, callback)
-  assert(not self.closed, "base-tools: cannot start a closed timer")
-  assert(type(delay_ms) == "number" and delay_ms >= 0 and delay_ms < math.huge, "base-tools: invalid timer delay")
-  assert(type(callback) == "function", "base-tools: timer callback must be a function")
+  local check = Context.checker(self.context, "timer.start")
+  local prefix = self.context and "" or "base-tools: "
+  check(not self.closed, prefix .. "cannot start a closed timer")
+  check(type(delay_ms) == "number" and delay_ms >= 0 and delay_ms < math.huge, prefix .. "invalid timer delay")
+  check(type(callback) == "function", prefix .. "timer callback must be a function")
   self:cancel()
 
   local function run()
@@ -25,13 +29,16 @@ function Timer:start(delay_ms, callback)
     end
   end
 
-  self.pending = run
   if delay_ms == 0 then
     vim.schedule(run)
   else
-    self.handle = self.handle or assert(vim.uv.new_timer())
-    self.handle:start(delay_ms, 0, vim.schedule_wrap(run))
+    if not self.handle then
+      local handle, err = Context.call(self.context, "timer.start", vim.uv.new_timer)
+      self.handle = check(handle, err or "unable to allocate a timer")
+    end
+    Context.call(self.context, "timer.start", self.handle.start, self.handle, delay_ms, 0, vim.schedule_wrap(run))
   end
+  self.pending = run
 end
 
 ---Cancel the pending callback and keep the timer available for reuse.
@@ -52,9 +59,10 @@ function Timer:close()
   self.closed = true
 end
 
+---@param opts? { context?: base_tools.Context }
 ---@return base_tools.Timer timer
-function M.new()
-  return setmetatable({}, Timer)
+function M.new(opts)
+  return setmetatable({ context = opts and opts.context }, Timer)
 end
 
 return M

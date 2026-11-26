@@ -1,3 +1,4 @@
+local Context = require("base_tools.context")
 local float = require("base_tools.float")
 local api = vim.api
 local ns = api.nvim_create_namespace("base-tools-scrollbar")
@@ -9,10 +10,8 @@ local M = {}
 ---@field offset integer Number of screen rows scrolled from the top.
 ---@field progress number Scroll position from 0 at the top to 1 at the bottom.
 
----@param win integer Window ID or 0 for the current window.
----@return base_tools.ScrollPosition?
-function M.position(win)
-  if not api.nvim_win_is_valid(win) then
+local function position_for(win, context)
+  if not Context.call(context, "scrollbar.position", api.nvim_win_is_valid, win) then
     return
   end
 
@@ -32,12 +31,21 @@ function M.position(win)
   return { total = total, visible = visible, offset = offset, progress = offset / (total - visible) }
 end
 
+---@param win integer Window ID or 0 for the current window.
+---@param opts? { context?: base_tools.Context }
+---@return base_tools.ScrollPosition?
+function M.position(win, opts)
+  return position_for(win, opts and opts.context)
+end
+
 ---@class base_tools.ScrollbarOptions
+---@field context? base_tools.Context
 ---@field track_highlight? string Highlight for the track and its background. Defaults to FloatBorder.
 ---@field thumb_highlight? string Highlight for the thumb. Defaults to Title.
 
 ---@class base_tools.Scrollbar
 ---@field private opts base_tools.ScrollbarOptions
+---@field private context? base_tools.Context
 ---@field private view? base_tools.Float
 ---@field private target? integer
 ---@field private close_event? integer
@@ -63,7 +71,7 @@ end
 ---@return base_tools.ScrollPosition?
 function Scrollbar:update(win)
   win = win == 0 and api.nvim_get_current_win() or win
-  local position = M.position(win)
+  local position = position_for(win, self.context)
   if not position then
     self:close()
     return
@@ -95,6 +103,7 @@ function Scrollbar:update(win)
     self:close()
 
     self.view = float.open({
+      context = self.context,
       config = vim.tbl_extend("force", config, { noautocmd = true }),
       win_options = { wrap = false, winhighlight = "Normal:" .. (self.opts.track_highlight or "FloatBorder") },
     })
@@ -127,7 +136,7 @@ function Scrollbar:update(win)
     local buf = self.view.buf
     api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-    api.nvim_buf_set_extmark(buf, ns, offset, 0, {
+    Context.call(self.context, "scrollbar.update", api.nvim_buf_set_extmark, buf, ns, offset, 0, {
       end_row = offset + size - 1,
       end_col = #"┃",
       hl_group = self.opts.thumb_highlight or "Title",
@@ -141,7 +150,7 @@ end
 ---@param opts? base_tools.ScrollbarOptions
 ---@return base_tools.Scrollbar
 function M.new(opts)
-  return setmetatable({ opts = opts or {} }, Scrollbar)
+  return setmetatable({ opts = opts or {}, context = opts and opts.context }, Scrollbar)
 end
 
 return M

@@ -1,9 +1,11 @@
+local Context = require("base_tools.context")
 local api = vim.api
 local float = require("base_tools.float")
 local text = require("base_tools.text")
 local M = {}
 
 ---@class base_tools.PreviewIndicator
+---@field private context? base_tools.Context
 ---@field private float? base_tools.Float
 ---@field private config? vim.api.keyset.win_config
 ---@field private value? string
@@ -27,7 +29,7 @@ local function border_visible(border, index)
 end
 
 function Indicator:update(win, position, value, highlight)
-  local target = api.nvim_win_get_config(win)
+  local target = Context.call(self.context, "preview_indicator.update", api.nvim_win_get_config, win)
   local row = api.nvim_win_get_position(win)[1] + position.visible
   if border_visible(target.border, 1) or border_visible(target.border, 2) or border_visible(target.border, 3) then
     row = row + 1
@@ -39,7 +41,7 @@ function Indicator:update(win, position, value, highlight)
   end
 
   local width = api.nvim_win_get_width(win)
-  value = text.clip(value, width, { side = "start" })
+  value = text.clip(value, width, { side = "start", context = self.context })
   local cells = vim.fn.strdisplaywidth(value)
   local config = {
     relative = "win",
@@ -58,6 +60,7 @@ function Indicator:update(win, position, value, highlight)
   if not self.float or not self.float:valid() then
     self:close()
     self.float = float.open({
+      context = self.context,
       config = vim.tbl_extend("force", config, { noautocmd = true }),
       win_options = { wrap = false },
     })
@@ -79,8 +82,9 @@ function Indicator:update(win, position, value, highlight)
   end
 end
 
-function M.new()
-  return setmetatable({}, Indicator)
+---@param opts? { context?: base_tools.Context }
+function M.new(opts)
+  return setmetatable({ context = opts and opts.context }, Indicator)
 end
 
 return M

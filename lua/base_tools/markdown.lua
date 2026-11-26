@@ -1,3 +1,4 @@
+local Context = require("base_tools.context")
 local api = vim.api
 local M = {}
 
@@ -37,10 +38,10 @@ local function parsed_fences(buf)
   end
 end
 
-local function scan_fences(buf)
+local function scan_fences(buf, context)
   local delimiters, fenced = {}, {}
   local opened
-  for row, line in ipairs(api.nvim_buf_get_lines(buf, 0, -1, false)) do
+  for row, line in ipairs(Context.call(context, "markdown.conceal_fences", api.nvim_buf_get_lines, buf, 0, -1, false)) do
     local marker, rest = line:match("^ ? ? ?([`~]+)(.*)$")
     if marker and #marker >= 3 and (marker:match("^`+$") or marker:match("^~+$")) then
       local char = marker:sub(1, 1)
@@ -66,16 +67,27 @@ end
 --- Hide Markdown fence delimiters, keeping the original buffer text for injections and copying.
 ---@param buf integer
 ---@param ns integer Namespace for the fence extmarks. The caller owns its lifecycle.
+---@param opts? { context?: base_tools.Context }
 ---@return table<integer, boolean> delimiters 1-based hidden row numbers.
 ---@return table<integer, boolean> fenced 1-based rows inside blocks, including the delimiters.
-function M.conceal_fences(buf, ns)
+function M.conceal_fences(buf, ns, opts)
+  local context = opts and opts.context
   local ok, delimiters, fenced = pcall(parsed_fences, buf)
   if not ok or not delimiters then
-    delimiters, fenced = scan_fences(buf)
+    delimiters, fenced = scan_fences(buf, context)
   end
 
   for row in pairs(delimiters) do
-    api.nvim_buf_set_extmark(buf, ns, row - 1, 0, { conceal_lines = "" })
+    Context.call(
+      context,
+      "markdown.conceal_fences",
+      api.nvim_buf_set_extmark,
+      buf,
+      ns,
+      row - 1,
+      0,
+      { conceal_lines = "" }
+    )
   end
 
   return delimiters, fenced
@@ -91,11 +103,11 @@ Renderer.__index = Renderer
 
 function Renderer:refresh()
   local buf, win = self.buf, self.win
-  local tick = api.nvim_buf_get_changedtick(buf)
+  local tick = Context.call(self.context, "markdown.refresh", api.nvim_buf_get_changedtick, buf)
   local changed = tick ~= self.tick
   if changed then
     api.nvim_buf_clear_namespace(buf, fence_ns, 0, -1)
-    self.hidden, self.fenced = M.conceal_fences(buf, fence_ns)
+    self.hidden, self.fenced = M.conceal_fences(buf, fence_ns, self)
     self.rules = {}
     pcall(visit_nodes, buf, "thematic_break", function(node)
       local row, col = node:start()
@@ -111,7 +123,7 @@ function Renderer:refresh()
       local row, col = rule[1], rule[2]
       local cells = width - vim.fn.virtcol({ row + 1, col + 1 }, false, win) + 1
       if cells > 0 then
-        api.nvim_buf_set_extmark(buf, rule_ns, row, col, {
+        Context.call(self.context, "markdown.refresh", api.nvim_buf_set_extmark, buf, rule_ns, row, col, {
           virt_text = { { string.rep("─", cells), self.rule_highlight } },
           virt_text_pos = "overlay",
         })
@@ -148,11 +160,16 @@ function Renderer:close()
 end
 
 ---@private
-function M.renderer(win)
+---@param win integer
+---@param opts? { context?: base_tools.Context }
+function M.renderer(win, opts)
+  local context = opts and opts.context
+  local buf = Context.call(context, "markdown.renderer", api.nvim_win_get_buf, win)
   local options = vim.wo[win]
   local view = setmetatable({
+    context = context,
     win = win,
-    buf = api.nvim_win_get_buf(win),
+    buf = buf,
     conceallevel = options.conceallevel,
     concealcursor = options.concealcursor,
   }, Renderer)

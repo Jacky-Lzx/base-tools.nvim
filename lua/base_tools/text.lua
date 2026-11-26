@@ -1,4 +1,5 @@
 require("base_tools")
+local Context = require("base_tools.context")
 local M = {}
 
 --- Clip single-line display text to a cell budget.
@@ -16,12 +17,17 @@ local M = {}
 ---
 ---@param text string
 ---@param cells integer
----@param opts? { side?: "start"|"end", ellipsis?: string|false }
+---@param opts? { side?: "start"|"end", ellipsis?: string|false, context?: base_tools.Context }
 ---@return string clipped
 ---@return integer first First retained source byte, zero-based.
 ---@return integer last End of the retained source range, exclusive.
 ---@return integer offset First retained byte in the clipped output, zero-based.
 function M.clip(text, cells, opts)
+  local context = opts and opts.context
+  if context then
+    Context.check(context, "text.clip", type(text) == "string", "Expected text to be a string")
+    Context.check(context, "text.clip", type(cells) == "number", "Expected a numeric cell budget")
+  end
   if cells <= 0 then
     return "", 0, 0, 0
   end
@@ -33,6 +39,9 @@ function M.clip(text, cells, opts)
 
   opts = opts or {}
   local marker = opts.ellipsis == false and "" or opts.ellipsis or "…"
+  if context then
+    Context.check(context, "text.clip", type(marker) == "string", "Expected an ellipsis string or false")
+  end
   if width(marker) > cells then
     marker = width(".") <= cells and "." or ""
   end

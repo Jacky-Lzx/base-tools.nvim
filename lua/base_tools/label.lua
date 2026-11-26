@@ -1,6 +1,8 @@
+local Context = require("base_tools.context")
 local M = {}
 
 ---@class base_tools.LabelOptions
+---@field context? base_tools.Context
 ---@field highlight? string Highlight group for the label.
 
 --- Display a path, keeping its suffix when clipped.
@@ -8,6 +10,9 @@ local M = {}
 ---@param opts? base_tools.LabelOptions
 ---@return base_tools.FileBorderLabel
 function M.path(path, opts)
+  if opts and opts.context then
+    Context.check(opts.context, "label.path", type(path) == "string", "Expected a path string")
+  end
   return { kind = "path", value = path, highlight = opts and opts.highlight }
 end
 
@@ -16,6 +21,9 @@ end
 ---@param opts? base_tools.LabelOptions
 ---@return base_tools.FileBorderLabel
 function M.filename(path, opts)
+  if opts and opts.context then
+    Context.check(opts.context, "label.filename", type(path) == "string", "Expected a path string")
+  end
   return { kind = "filename", value = path, highlight = opts and opts.highlight }
 end
 

@@ -1,4 +1,5 @@
 ---Defer loading and initialization of Lua modules until a feature needs them.
+local Context = require("base_tools.context")
 local M = {}
 
 ---Callbacks supplied by the plugin that owns the feature.
@@ -8,6 +9,7 @@ local M = {}
 
 ---Owns a module's configuration and initialization state independently of Lua's require cache.
 ---@class base_tools.Lifecycle
+---@field private context? base_tools.Context
 ---@field name string Name passed to require.
 ---@field hooks base_tools.LifecycleHooks Feature initialization and cleanup callbacks.
 ---@field options any Latest options supplied by the caller.
@@ -50,7 +52,7 @@ end
 ---A setup error propagates and a later call can retry initialization.
 ---@return table module The successfully initialized module.
 function Lifecycle:ensure()
-  return self:peek() or setup(self, require(self.name))
+  return self:peek() or setup(self, Context.call(self.context, "lifecycle.ensure", require, self.name))
 end
 
 ---Run cleanup for an available module without loading it.
@@ -69,9 +71,10 @@ end
 ---Create an independent lifecycle. The named module is loaded by ensure.
 ---@param name string Module name accepted by require.
 ---@param hooks base_tools.LifecycleHooks Callbacks that initialize and clean up the module.
+---@param opts? { context?: base_tools.Context }
 ---@return base_tools.Lifecycle lifecycle
-function M.new(name, hooks)
-  return setmetatable({ name = name, hooks = hooks }, Lifecycle)
+function M.new(name, hooks, opts)
+  return setmetatable({ name = name, hooks = hooks, context = opts and opts.context }, Lifecycle)
 end
 
 return M

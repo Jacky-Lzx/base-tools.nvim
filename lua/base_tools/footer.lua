@@ -1,5 +1,6 @@
 require("base_tools")
 
+local Context = require("base_tools.context")
 local text = require("base_tools.text")
 local api = vim.api
 local M = {}
@@ -7,10 +8,12 @@ local attached = {}
 local group
 
 ---@class base_tools.FooterOptions
+---@field context? base_tools.Context Attribution for the lifetime of the footer.
 ---@field left? string Left-aligned plain text.
 ---@field right? string Right-aligned plain text.
 
 ---@class base_tools.Footer
+---@field private context? base_tools.Context
 ---@field private win integer
 ---@field private buf integer
 ---@field private left string
@@ -21,11 +24,11 @@ local group
 local Footer = {}
 Footer.__index = Footer
 
-local function label(value, previous)
+local function label(value, previous, context, operation)
   if value == nil then
     return previous
   end
-  assert(type(value) == "string", "Footer labels must be strings")
+  Context.check(context, operation, type(value) == "string", "Footer labels must be strings")
   return (value:gsub("[%z\1-\31\127]", " "))
 end
 
@@ -120,7 +123,10 @@ function Footer:update(opts)
     return false
   end
 
-  self.left, self.right = label(opts.left, self.left), label(opts.right, self.right)
+  Context.check(self.context, "footer.update", type(opts) == "table", "Expected footer options")
+  local left = label(opts.left, self.left, self.context, "footer.update")
+  local right = label(opts.right, self.right, self.context, "footer.update")
+  self.left, self.right = left, right
   return synchronize(self)
 end
 
@@ -141,9 +147,11 @@ end
 ---@return base_tools.Footer
 function M.attach(win, opts)
   win = win == 0 and api.nvim_get_current_win() or win
-  local buf = api.nvim_win_get_buf(win)
   opts = opts or {}
-  local left, right = label(opts.left, ""), label(opts.right, "")
+  local context = opts.context
+  local buf = Context.call(context, "footer.attach", api.nvim_win_get_buf, win)
+  local left = label(opts.left, "", context, "footer.attach")
+  local right = label(opts.right, "", context, "footer.attach")
   local existing = attached[win] and attached[win][buf]
   if existing then
     existing:close()
@@ -151,6 +159,7 @@ function M.attach(win, opts)
 
   local options = vim.wo[win][0]
   local footer = setmetatable({
+    context = context,
     win = win,
     buf = buf,
     previous = options.statusline,

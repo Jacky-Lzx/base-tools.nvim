@@ -11,6 +11,37 @@ Neovim **0.12+**.
 Put this repository on `runtimepath` and require the module you need.
 Plugins that use these modules can declare `Jacky-Lzx/base-tools.nvim` as a dependency.
 
+## Error context
+
+Create one context per plugin and pass it to the modules the plugin uses.
+
+```lua
+local context = require("base_tools.context").new("my-plugin.nvim")
+local config = require("base_tools.config").new({
+  width = { default = 40, validate = require("base_tools.config.validators").range(10) },
+}, { context = context })
+local timer = require("base_tools.timer").new({ context = context })
+local jobs = require("base_tools.process").new({ context = context })
+```
+
+Errors reported by these operations use `my-plugin.nvim [operation]: message`.
+For example, an invalid width is reported as
+`my-plugin.nvim [config.resolve]: width must be a finite number greater than or equal to 10`.
+Operations without a context return unprefixed errors.
+
+Pass `context` in the optional options table when opening a float or preview,
+attaching a footer, resolving or installing a keymap, or constructing a command
+registry or scrollbar. A lifecycle takes the options table after its module
+name and hooks. Standalone command groups and helpers such as `text.clip()`
+and `color.mix()` also accept the context in their options table.
+
+Objects retain their context. Configuration sections, float mappings and
+border labels, and preview scrollbars inherit it. Plugin callbacks continue
+to propagate their own errors. Process launch errors retain their existing
+`callback(nil, launch_error)` delivery, and completed processes retain the
+original exit code and output. The context module can be loaded independently
+of the Neovim version check.
+
 ## Module lifecycle
 
 Create one lifecycle per feature and call it from the plugin's own activation points.

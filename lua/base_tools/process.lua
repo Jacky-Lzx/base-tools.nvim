@@ -1,8 +1,10 @@
 ---Run asynchronous subprocesses with a shared cancellation lifetime.
+local Context = require("base_tools.context")
 local M = {}
 
 ---@class base_tools.ProcessGroup
 ---@field cancelled boolean Whether the group has been closed.
+---@field private context? base_tools.Context
 ---@field private processes table<vim.SystemObj, true>
 local Group = {}
 Group.__index = Group
@@ -34,7 +36,7 @@ function Group:run(argv, opts, callback)
     process = value
     self.processes[process] = true
   else
-    complete(nil, tostring(value))
+    complete(nil, Context.format(self.context, "process.run", tostring(value)))
   end
 end
 
@@ -49,9 +51,10 @@ function Group:close()
   self.processes = {}
 end
 
+---@param opts? { context?: base_tools.Context }
 ---@return base_tools.ProcessGroup group
-function M.new()
-  return setmetatable({ cancelled = false, processes = {} }, Group)
+function M.new(opts)
+  return setmetatable({ cancelled = false, processes = {}, context = opts and opts.context }, Group)
 end
 
 return M

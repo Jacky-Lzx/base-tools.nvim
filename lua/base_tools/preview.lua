@@ -1,4 +1,5 @@
 local api = vim.api
+local Context = require("base_tools.context")
 local float = require("base_tools.float")
 local scrollbar = require("base_tools.scrollbar")
 local ns = api.nvim_create_namespace("base-tools-preview")
@@ -7,6 +8,7 @@ local views = {}
 local M = {}
 
 ---@class base_tools.PreviewAttachOptions
+---@field context? base_tools.Context
 ---@field scrollbar? boolean|base_tools.ScrollbarOptions Show a scrollbar on overflow.
 ---@field border_labels? base_tools.BorderLabels Initial labels.
 ---@field format? "markdown" Render the existing contents as a Markdown document.
@@ -28,6 +30,7 @@ local M = {}
 ---@field border_labels? base_tools.BorderLabels Labels to update with the contents.
 
 ---@class base_tools.Preview
+---@field private context? base_tools.Context
 ---@field win? integer
 ---@field buf integer
 ---@field private float base_tools.Float
@@ -169,7 +172,7 @@ local function refresh_indicator(self, position, percent, arrows)
   local label = bottom and bottom.right
 
   if position and label and label.fallback == "below" then
-    self.indicator = self.indicator or require("base_tools.preview_indicator").new()
+    self.indicator = self.indicator or require("base_tools.preview_indicator").new({ context = self.context })
     self.indicator:update(self.win, position, scroll_text(label, percent, arrows), label.highlight)
   else
     close_indicator(self)
@@ -243,7 +246,7 @@ end
 
 local function set_format(self, format, opts)
   if format == "markdown" then
-    self.markdown = self.markdown or require("base_tools.markdown").renderer(self.win)
+    self.markdown = self.markdown or require("base_tools.markdown").renderer(self.win, { context = self.context })
     self.markdown_options = opts
     self.markdown:set_options(opts)
     highlight(self, "markdown")
@@ -325,7 +328,7 @@ local function apply_content(self, content)
   local win = self.win
   local saved = content.scroll == "keep" and api.nvim_win_call(win, vim.fn.winsaveview) or nil
   if content.lines then
-    api.nvim_buf_set_lines(self.buf, 0, -1, false, content.lines)
+    Context.call(self.context, "preview.set_content", api.nvim_buf_set_lines, self.buf, 0, -1, false, content.lines)
   end
 
   if content.lines or content.format then
@@ -495,9 +498,9 @@ function Preview:detach()
   return true
 end
 
-local function new_scrollbar(opts)
+local function new_scrollbar(opts, context)
   if opts then
-    return scrollbar.new(type(opts) == "table" and opts or nil)
+    return scrollbar.new(vim.tbl_extend("force", type(opts) == "table" and opts or {}, { context = context }))
   end
 end
 
@@ -510,7 +513,7 @@ function Preview:set_scrollbar(opts)
   end
 
   close_scrollbar(self)
-  self.scrollbar = new_scrollbar(opts)
+  self.scrollbar = new_scrollbar(opts, self.context)
   if self.scrollbar then
     self:refresh()
   end
@@ -521,6 +524,7 @@ end
 
 local function mount(target, opts, attached)
   local view = setmetatable({
+    context = opts.context,
     float = target,
     win = target.win,
     buf = target.buf,
@@ -530,7 +534,7 @@ local function mount(target, opts, attached)
   views[target.win] = view
   local ok, err = pcall(function()
     local win = target.win
-    view.close_event = api.nvim_create_autocmd("WinClosed", {
+    view.close_event = Context.call(view.context, "preview.mount", api.nvim_create_autocmd, "WinClosed", {
       pattern = tostring(win),
       once = true,
       callback = function()
@@ -538,7 +542,7 @@ local function mount(target, opts, attached)
         release(view)
       end,
     })
-    view.scrollbar = new_scrollbar(opts.scrollbar)
+    view.scrollbar = new_scrollbar(opts.scrollbar, view.context)
 
     if opts.lines or opts.language ~= nil or opts.format or opts.border_labels or view.scrollbar then
       apply_content(view, opts)
@@ -558,16 +562,18 @@ end
 ---@param opts? base_tools.PreviewAttachOptions
 ---@return base_tools.Preview
 function M.attach(win, opts)
+  opts = opts or {}
   win = win == 0 and api.nvim_get_current_win() or win
   local existing = views[win]
   if existing then
-    assert(existing.attached, "window is already owned by a preview")
+    Context.check(opts.context, "preview.attach", existing.attached, "window is already owned by a preview")
     return existing
   end
 
-  assert(api.nvim_win_get_config(win).relative ~= "", "preview.attach requires a floating window")
-  opts = opts or {}
-  return mount(float.attach(win), {
+  local config = Context.call(opts.context, "preview.attach", api.nvim_win_get_config, win)
+  Context.check(opts.context, "preview.attach", config.relative ~= "", "preview.attach requires a floating window")
+  return mount(float.attach(win, { context = opts.context }), {
+    context = opts.context,
     scrollbar = opts.scrollbar,
     border_labels = opts.border_labels,
     format = opts.format,
@@ -579,6 +585,7 @@ end
 ---@return base_tools.Preview
 function M.open(opts)
   local target = float.open({
+    context = opts.context,
     config = opts.config,
     buf = opts.buf,
     enter = opts.enter,

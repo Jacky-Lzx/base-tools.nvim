@@ -1,9 +1,11 @@
+local Context = require("base_tools.context")
 local buffer = require("base_tools.buffer")
 local M = {}
 local api = vim.api
 
 ---@class base_tools.FloatOptions
 ---@field config vim.api.keyset.win_config
+---@field context? base_tools.Context
 ---@field buf? integer
 ---@field enter? boolean
 ---@field buf_options? table<string, any>
@@ -24,6 +26,7 @@ local api = vim.api
 ---@class base_tools.Float
 ---@field win? integer
 ---@field buf integer
+---@field private context? base_tools.Context
 ---@field private owned boolean
 ---@field private borrowed_win? boolean
 ---@field private border_labels? table
@@ -49,7 +52,7 @@ function Float:update(config)
     return false
   end
 
-  api.nvim_win_set_config(self.win, config)
+  Context.call(self.context, "float.update", api.nvim_win_set_config, self.win, config)
   if self.border_labels then
     self.border_labels:refresh(config)
   end
@@ -65,7 +68,7 @@ function Float:set_border_labels(labels)
     return false
   end
 
-  local layout = self.border_labels or require("base_tools.border_labels").new(self.win)
+  local layout = self.border_labels or require("base_tools.border_labels").new(self.win, { context = self.context })
   self.border_labels = layout:set(labels) and layout or nil
 
   return true
@@ -161,12 +164,14 @@ end
 ---@param opts? table Options for vim.keymap.set(). The float chooses the buffer.
 ---@return fun() unmap
 function Float:map(mode, lhs, action, opts)
-  assert(self:valid(), "base-tools.float: cannot map a closed float")
+  local message = self.context and "cannot map a closed float" or "base-tools.float: cannot map a closed float"
+  Context.check(self.context, "float.map", self:valid(), message)
   local keymap = require("base_tools.keymap")
   opts = vim.tbl_extend("force", {}, opts or {})
   local binding = {
     install = function(buf)
-      local cleanup = keymap.install(mode, lhs, action, vim.tbl_extend("force", {}, opts, { buffer = buf }))
+      local cleanup =
+        keymap.install(mode, lhs, action, vim.tbl_extend("force", {}, opts, { buffer = buf, context = self.context }))
       return cleanup
     end,
   }
@@ -222,20 +227,29 @@ end
 ---@param opts base_tools.FloatOptions
 ---@return base_tools.Float
 function M.open(opts)
+  local context = opts.context
   local scope = opts.keymap_scope or "focus"
-  assert(scope == "focus" or scope == "buffer", "base-tools.float: invalid keymap scope")
+  local message = context and "invalid keymap scope" or "base-tools.float: invalid keymap scope"
+  Context.check(context, "float.open", scope == "focus" or scope == "buffer", message)
   local owned = opts.buf == nil
+  local buf = opts.buf
+  if owned then
+    buf = M.scratch(vim.tbl_extend("force", { bufhidden = "wipe" }, opts.buf_options or {}, { context = context }))
+  end
   local view = setmetatable({
-    buf = owned and M.scratch(vim.tbl_extend("force", { bufhidden = "wipe" }, opts.buf_options or {})) or opts.buf,
+    context = context,
+    buf = buf,
     owned = owned,
     buffer_keymaps = scope == "buffer",
   }, Float)
 
   local ok, err = pcall(function()
-    view.win = api.nvim_open_win(view.buf, opts.enter == true, opts.config)
-    for name, value in pairs(opts.win_options or {}) do
-      vim.wo[view.win][name] = value
-    end
+    Context.call(context, "float.open", function()
+      view.win = api.nvim_open_win(view.buf, opts.enter == true, opts.config)
+      for name, value in pairs(opts.win_options or {}) do
+        vim.wo[view.win][name] = value
+      end
+    end)
 
     if opts.border_labels then
       view:set_border_labels(opts.border_labels)
@@ -252,9 +266,12 @@ end
 
 ---@private
 ---@param win integer
+---@param opts? { context?: base_tools.Context }
 ---@return base_tools.Float
-function M.attach(win)
-  return setmetatable({ win = win, buf = api.nvim_win_get_buf(win), owned = false, borrowed_win = true }, Float)
+function M.attach(win, opts)
+  local context = opts and opts.context
+  local buf = Context.call(context, "float.attach", api.nvim_win_get_buf, win)
+  return setmetatable({ win = win, buf = buf, context = context, owned = false, borrowed_win = true }, Float)
 end
 
 return M

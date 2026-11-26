@@ -1,5 +1,7 @@
 require("base_tools")
 
+local Context = require("base_tools.context")
+
 local M = {}
 local api = vim.api
 
@@ -19,9 +21,9 @@ local function snapshot(buffer)
   return buffer and api.nvim_buf_get_commands(buffer, {}) or api.nvim_get_commands({})
 end
 
-local function check_owner(name, existing, previous)
+local function check_owner(name, existing, previous, check)
   if existing and not (previous and vim.deep_equal(existing, previous)) then
-    error("Command already exists: " .. name)
+    check(false, "Command already exists: " .. name)
   end
 end
 
@@ -101,11 +103,11 @@ local function match(candidates, lead)
   end, candidates)
 end
 
-local function command_menu(name, spec, escape_candidate)
+local function command_menu(name, spec, escape_candidate, check)
   local menu = spec.menu == true and {} or spec.menu
-  assert(type(menu) == "table", "Command group menu must be a boolean or table")
-  assert(menu.prompt == nil or type(menu.prompt) == "string", "Expected a command menu prompt")
-  assert(menu.items == nil or type(menu.items) == "function", "Expected a command menu items provider")
+  check(type(menu) == "table", "Command group menu must be a boolean or table")
+  check(menu.prompt == nil or type(menu.prompt) == "string", "Expected a command menu prompt")
+  check(menu.items == nil or type(menu.items) == "function", "Expected a command menu items provider")
 
   local defaults = {}
   for _, action in ipairs(spec.actions) do
@@ -147,20 +149,26 @@ local function command_menu(name, spec, escape_candidate)
   end
 end
 
+---@class base_tools.UserCommandGroupOptions: vim.api.keyset.user_command
+---@field context? base_tools.Context
+
 --- Build a command definition for use with a registry's create_many().
 ---@param name string
 ---@param spec base_tools.UserCommandGroup
----@param opts? vim.api.keyset.user_command
+---@param opts? base_tools.UserCommandGroupOptions
 ---@return base_tools.UserCommandDefinition
 function M.group(name, spec, opts)
-  assert(
+  local context = opts and opts.context
+  local check = Context.checker(context, "user_command.group")
+  check(
     type(spec) == "table" and type(spec.actions) == "table" and vim.islist(spec.actions),
     "Command group actions must be a list"
   )
 
   spec = vim.deepcopy(spec)
   local options = vim.tbl_extend("force", { nargs = "*" }, opts or {})
-  assert(options.nargs == "*" or options.nargs == "+", "Command groups require nargs=* or nargs=+")
+  options.context = nil
+  check(options.nargs == "*" or options.nargs == "+", "Command groups require nargs=* or nargs=+")
 
   local escapes = options.bar and '[ \t\\|"]' or "[ \t\\]"
   local function escape_candidate(value)
@@ -170,26 +178,26 @@ function M.group(name, spec, opts)
 
   local actions, names = {}, {}
   for _, action in ipairs(spec.actions) do
-    assert(
+    check(
       type(action) == "table" and type(action.name) == "string" and action.name:match("^%S+$"),
       "Expected a subcommand name"
     )
-    assert(type(action.run) == "function", "Expected a handler for " .. action.name)
-    assert(action.complete == nil or type(action.complete) == "table", "Expected completion providers by position")
-    assert(not actions[action.name], "Duplicate action: " .. action.name)
+    check(type(action.run) == "function", "Expected a handler for " .. action.name)
+    check(action.complete == nil or type(action.complete) == "table", "Expected completion providers by position")
+    check(not actions[action.name], "Duplicate action: " .. action.name)
 
     actions[action.name] = action
     names[#names + 1] = escape_candidate(action.name)
   end
 
   if spec.menu then
-    assert(not actions.menu, "The generated menu conflicts with a menu action")
-    actions.menu = { run = command_menu(name, spec, escape_candidate) }
+    check(not actions.menu, "The generated menu conflicts with a menu action")
+    actions.menu = { run = command_menu(name, spec, escape_candidate, check) }
     names[#names + 1] = "menu"
   end
 
-  assert(spec.default == nil or actions[spec.default], "Unknown default action: " .. tostring(spec.default))
-  assert(spec.on_unknown == nil or type(spec.on_unknown) == "function", "Expected an unknown action handler")
+  check(spec.default == nil or actions[spec.default], "Unknown default action: " .. tostring(spec.default))
+  check(spec.on_unknown == nil or type(spec.on_unknown) == "function", "Expected an unknown action handler")
 
   options.complete = function(lead, line, cursor)
     -- Leave only completed words before the cursor for Neovim's Ex parser.
@@ -239,15 +247,17 @@ function M.group(name, spec, opts)
       return spec.on_unknown(args)
     end
 
-    error("Unknown " .. name .. " action: " .. (action_name or ""), 0)
+    error(Context.format(context, "user_command.run", "Unknown " .. name .. " action: " .. (action_name or "")), 0)
   end
 
   return { name, run, options }
 end
 
 --- Create an isolated registry for a consumer's global and buffer-local commands.
+---@param opts? { context?: base_tools.Context }
 ---@return base_tools.UserCommandRegistry
-function M.new()
+function M.new(opts)
+  local context = opts and opts.context
   ---@class base_tools.UserCommandRegistry
   local registry = {}
   local owned = {}
@@ -281,15 +291,17 @@ function M.new()
   ---@param buffer? integer Buffer number, `0` for the current buffer, or omitted for global scope.
   ---@return base_tools.UserCommandCleanup cleanup
   function registry.create(name, callback, opts, buffer)
+    local operation = "user_command.create"
+    local check = Context.checker(context, operation)
     if buffer == 0 then
       buffer = api.nvim_get_current_buf()
     end
 
     local scope = buffer or 0
     owned[scope] = owned[scope] or {}
-    local existing = snapshot(buffer)[name]
-    check_owner(name, existing, owned[scope][name])
-    install(name, callback, opts, buffer, existing ~= nil)
+    local existing = Context.call(context, operation, snapshot, buffer)[name]
+    check_owner(name, existing, owned[scope][name], check)
+    Context.call(context, operation, install, name, callback, opts, buffer, existing ~= nil)
     return remember(name, buffer, snapshot(buffer)[name])
   end
 
@@ -300,6 +312,9 @@ function M.new()
   ---@param buffer? integer
   ---@return base_tools.UserCommandCleanup
   function registry.create_group(name, spec, opts, buffer)
+    if context then
+      opts = vim.tbl_extend("force", {}, opts or {}, { context = context })
+    end
     local definition = M.group(name, spec, opts)
     return registry.create(definition[1], definition[2], definition[3], buffer)
   end
@@ -321,12 +336,14 @@ function M.new()
 
     local scope = buffer or 0
     owned[scope] = owned[scope] or {}
-    local before, seen = snapshot(buffer), {}
+    local operation = "user_command.create_many"
+    local check = Context.checker(context, operation)
+    local before, seen = Context.call(context, operation, snapshot, buffer), {}
     for _, definition in ipairs(definitions) do
       local name = definition[1]
-      assert(not seen[name], "Duplicate command in batch: " .. name)
+      check(not seen[name], "Duplicate command in batch: " .. name)
       seen[name] = true
-      check_owner(name, before[name], owned[scope][name])
+      check_owner(name, before[name], owned[scope][name], check)
     end
 
     local count = 0
@@ -349,7 +366,7 @@ function M.new()
     end
 
     if not ok then
-      error(err, 0)
+      error(Context.format(context, operation, err), 0)
     end
 
     return cleanups
@@ -365,7 +382,7 @@ function M.new()
 
     local commands = owned[buffer or 0]
     if commands then
-      remove_if_current(name, buffer, commands[name])
+      Context.call(context, "user_command.delete", remove_if_current, name, buffer, commands[name])
       commands[name] = nil
     end
   end
