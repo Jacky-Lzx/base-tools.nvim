@@ -24,6 +24,8 @@ The prompt stays visible as the editable text scrolls. The left ellipsis shows
 when part of the value is outside the viewport. On narrow windows the prompt
 moves above the text when space permits. The layout's `win` is the editable
 window, and `frame_win` identifies its outer frame and border labels.
+Set `completion_cwd` to resolve file or directory completion against a
+chosen base directory.
 
 ```lua
 local input = require("base_tools.input")

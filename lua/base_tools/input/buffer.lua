@@ -106,6 +106,9 @@ local function query(input)
   local cursor = api.nvim_win_get_cursor(0)
   local lines = api.nvim_buf_get_lines(input.buf, 0, -1, false)
   local before = lines[cursor[1]]:sub(1, cursor[2])
+  if input.completion_prefix then
+    return 0, before, table.concat(lines, "\n"), offset(lines, cursor[1], cursor[2])
+  end
   local start = 0
   -- Separate arguments at unescaped whitespace; keep paths containing '\ '.
   for i = 1, #before do
@@ -120,6 +123,28 @@ local function query(input)
     end
   end
   return start, before:sub(start + 1), table.concat(lines, "\n"), offset(lines, cursor[1], cursor[2])
+end
+
+local windows = vim.fn.has("win32") == 1
+
+local function complete_native(input, pattern)
+  local prefix = input.completion_prefix
+  local absolute = pattern:match("^[/~]")
+    or windows and pattern:match("^%a:")
+    or windows and vim.startswith(pattern, "\\")
+  if not prefix or absolute then
+    return vim.fn.getcompletion(pattern, input.opts.completion, 1)
+  end
+
+  local matches = vim.fn.getcompletion(vim.fn.fnameescape(prefix) .. pattern, input.opts.completion, 1)
+  local relative = {}
+  for _, match in ipairs(matches) do
+    local name = windows and match:gsub("\\", "/") or match
+    if vim.startswith(name, prefix) then
+      relative[#relative + 1] = match:sub(#prefix + 1)
+    end
+  end
+  return relative
 end
 
 function M.complete(findstart, base)
@@ -154,7 +179,7 @@ function M.complete(findstart, base)
       return result
     end
     local pattern = input.opts.completion == "cmdline" and text:sub(1, cursor) or lead
-    return vim.fn.getcompletion(pattern, input.opts.completion, 1)
+    return complete_native(input, pattern)
   end)
   if not ok or type(matches) ~= "table" then
     warn(input, ok and "completion must return a list" or matches)
@@ -170,7 +195,12 @@ function M.complete(findstart, base)
 end
 
 function M.attach(buf, opts, context)
-  inputs[buf] = { buf = buf, opts = opts, context = context }
+  local prefix
+  if opts.completion_cwd then
+    local root = require("base_tools.path").absolute(opts.completion_cwd)
+    prefix = vim.endswith(root, "/") and root or root .. "/"
+  end
+  inputs[buf] = { buf = buf, opts = opts, context = context, completion_prefix = prefix }
   if opts.completion and opts.completion ~= "" then
     vim.bo[buf].completefunc = completefunc
   end

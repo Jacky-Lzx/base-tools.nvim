@@ -156,3 +156,34 @@ t.run("input fills the space on its right after a long-line cursor jump", functi
     return not api.nvim_win_is_valid(box.win)
   end))
 end)
+
+t.run("input file completion resolves relative values against an explicit directory", function()
+  local origin_cwd = vim.fn.getcwd()
+  local directory = vim.fn.tempname() .. " [input] directory"
+  assert(vim.fn.mkdir(directory .. "/nested dir", "p") == 1)
+  assert(vim.fn.writefile({}, directory .. "/nested dir/test.txt") == 0)
+  local root = assert(vim.uv.fs_realpath(directory))
+  local handle = input.open({ completion_cwd = root, completion = "file" }, function() end)
+  assert(vim.wait(1000, function()
+    return handle:get_layout() ~= nil
+  end))
+
+  local box = handle:get_layout()
+  local complete = require("base_tools.input.buffer").complete
+  for _, case in ipairs({
+    { "nested dir/tes", "nested dir/test.txt" },
+    { vim.fn.fnameescape(root) .. "/nested dir/tes", root .. "/nested dir/test.txt" },
+  }) do
+    local lead, match = unpack(case)
+    api.nvim_buf_set_lines(box.buf, 0, -1, false, { lead })
+    api.nvim_win_set_cursor(box.win, { 1, #lead })
+    t.eq(0, complete(1, ""))
+    t.eq({ { word = match, equal = 1 } }, complete(0, lead))
+  end
+  t.eq(origin_cwd, vim.fn.getcwd())
+  handle:cancel()
+  assert(vim.wait(1000, function()
+    return not api.nvim_win_is_valid(box.win)
+  end))
+  assert(vim.fn.delete(directory, "rf") == 0)
+end)

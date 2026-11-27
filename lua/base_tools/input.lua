@@ -48,6 +48,7 @@ local M = {}
 ---@field default? string|(string|base_tools.InputFragment)[]
 ---@field validate? fun(value: string): boolean|string
 ---@field completion? string Neovim completion type.
+---@field completion_cwd? string Base directory for file or directory completion.
 ---@field highlight? string|fun(value: string): [integer, integer, string][]
 ---@field multiline? boolean
 ---@field hints? boolean
@@ -629,6 +630,13 @@ function M.new(adapter)
     check(type(callback) == "function", "input requires a completion callback")
     check(opts.style == nil or type(opts.style) == "table", "input style must be a table")
     check(opts.completion == nil or type(opts.completion) == "string", "completion must be a string")
+    check(
+      opts.completion_cwd == nil
+        or type(opts.completion_cwd) == "string"
+          and opts.completion_cwd ~= ""
+          and (opts.completion == "file" or opts.completion == "dir"),
+      "completion_cwd requires a nonempty directory and file or dir completion"
+    )
     check(
       opts.highlight == nil or type(opts.highlight) == "string" or type(opts.highlight) == "function",
       "highlight must be a callback or function name"
