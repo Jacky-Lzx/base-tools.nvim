@@ -130,3 +130,29 @@ t.run("input reserves prompt space and cleans up both windows on native close", 
     t.eq(false, api.nvim_buf_is_valid(prompt_buf))
   end
 end)
+
+t.run("input fills the space on its right after a long-line cursor jump", function()
+  local path = "/目录/with-a-long-name/another/deep/directory/main.lua"
+  local handle = input.open({ default = path, prompt = "Path: ", style = { width = 30 } }, function() end)
+  assert(vim.wait(1000, function()
+    return handle:get_layout() ~= nil
+  end))
+  local box = handle:get_layout()
+  local width = api.nvim_win_get_width(box.win)
+  local cursor = api.nvim_win_get_cursor(box.win)
+  local last_column = vim.fn.strdisplaywidth(path) + (cursor[2] == #path and 1 or 0)
+
+  api.nvim_win_call(box.win, function()
+    vim.fn.winrestview({ leftcol = last_column - 8 })
+  end)
+  api.nvim_exec_autocmds("WinScrolled", { pattern = tostring(box.win) })
+  assert(vim.wait(1000, function()
+    return api.nvim_win_call(box.win, vim.fn.winsaveview).leftcol == last_column - width
+  end))
+  t.eq(cursor, api.nvim_win_get_cursor(box.win))
+  t.eq({ path }, api.nvim_buf_get_lines(box.buf, 0, -1, false))
+  handle.cancel()
+  assert(vim.wait(1000, function()
+    return not api.nvim_win_is_valid(box.win)
+  end))
+end)

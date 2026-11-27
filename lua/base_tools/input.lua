@@ -172,6 +172,20 @@ function M.new(adapter)
     end
   end
 
+  local function fit_horizontal_view(win)
+    local width = api.nvim_win_get_width(win)
+    api.nvim_win_call(win, function()
+      local view = vim.fn.winsaveview()
+      local cursor = vim.fn.virtcol(".")
+      local last = math.max(cursor, vim.fn.virtcol("$") - 1)
+      -- A jump off-screen can recenter the cursor and scroll past the line end.
+      local leftcol = math.max(0, cursor - width, math.min(view.leftcol, last - width))
+      if leftcol ~= view.leftcol then
+        vim.fn.winrestview({ leftcol = leftcol })
+      end
+    end)
+  end
+
   local function update(a)
     if active ~= a or a.closed or not M.get_window() then
       return
@@ -207,6 +221,7 @@ function M.new(adapter)
       require("base_tools.input.feedback").render(a, box)
     end
     a.signature = signature(a)
+    fit_horizontal_view(a.win)
     -- Run only from scheduled work, never inside the decoration provider.
     local redraw = { valid = true, flush = true }
     if not a.frame then
@@ -448,7 +463,7 @@ function M.new(adapter)
       end
 
       local win_options = layout.win_options(w)
-      win_options.wrap, win_options.scrolloff, win_options.sidescrolloff = false, 0, 2
+      win_options.wrap, win_options.scrolloff, win_options.sidescrolloff = false, 0, 0
       win_options.list = true
       local marker = vim.fn.strdisplaywidth("…") == 1 and "…" or "<"
       win_options.listchars = "tab:  ,precedes:" .. marker
