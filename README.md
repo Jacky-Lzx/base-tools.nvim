@@ -41,6 +41,11 @@ with `input.new()` each manage one active input. A newer request in that control
 cancels the previous request. Providers can supply their own layout and completion
 callbacks via the controller adapter.
 
+Both `input.open()` and `input.float_options()` accept `border_labels`. Use
+`{ top = { center = "Authentication" }, bottom = { right = "Esc cancel" } }`
+to label an input frame. Validation and input hints occupy `bottom.left`
+while active and restore its configured label when the feedback clears.
+
 ## Error context
 
 Create one context per plugin and pass it to the modules the plugin uses.

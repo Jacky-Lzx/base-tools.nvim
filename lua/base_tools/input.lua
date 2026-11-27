@@ -39,6 +39,7 @@ local M = {}
 ---@class base_tools.InputOptions
 ---@field context? base_tools.Context
 ---@field style? base_tools.InputStyle
+---@field border_labels? base_tools.BorderLabels
 ---@field title? string|false
 ---@field title_pos? "left"|"center"|"right"
 ---@field width? number
@@ -77,6 +78,9 @@ local M = {}
 ---@field height? integer
 ---@field title? string|false
 ---@field title_pos? "left"|"center"|"right"
+---@field footer? string|[string, string?][] Bottom border label.
+---@field footer_pos? "left"|"center"|"right"
+---@field border_labels? base_tools.BorderLabels
 ---@field anchor? table
 ---@field focusable? boolean
 
@@ -393,7 +397,14 @@ function M.new(adapter)
       local box, w = geometry(a)
       local win_options = layout.win_options(w)
       win_options.wrap, win_options.scrolloff, win_options.sidescrolloff = false, 0, 2
-      a.float = float.open({ buf = a.buf, enter = true, context = a.context, config = box, win_options = win_options })
+      a.float = float.open({
+        buf = a.buf,
+        enter = true,
+        context = a.context,
+        config = box,
+        win_options = win_options,
+        border_labels = opts.border_labels,
+      })
       a.win, a.geometry, a.winblend = a.float.win, box, w.winblend
       local prompt = opts.prompt or ""
       if (w.border == "none" or w.border == "") and prompt == "" and type(w.title) == "string" then
@@ -622,6 +633,7 @@ end
 
 --- Build options for base_tools.float.open without creating a window.
 --- height is the number of content rows. A cursor anchor is optional.
+--- Title and footer are omitted when the style has no border.
 ---@param style? base_tools.InputStyle
 ---@param opts? base_tools.InputFloatOptions
 ---@return base_tools.FloatOptions
@@ -632,8 +644,11 @@ function M.float_options(style, opts)
     style.title = opts.title
   end
   style.title_pos = opts.title_pos or style.title_pos
-  local config = layout.input(style, opts.height or 1, opts.anchor, opts.focusable ~= false)
-  return { config = config, win_options = layout.win_options(style) }
+  local config, edge = layout.input(style, opts.height or 1, opts.anchor, opts.focusable ~= false)
+  if edge > 0 and opts.footer ~= nil then
+    config.footer, config.footer_pos = opts.footer, opts.footer_pos
+  end
+  return { config = config, win_options = layout.win_options(style), border_labels = opts.border_labels }
 end
 
 return M

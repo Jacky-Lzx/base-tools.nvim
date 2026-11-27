@@ -47,10 +47,14 @@ function M.render(a, box)
   if border then
     M.close(a)
     if a.feedback_text ~= text or a.feedback_group ~= group then
-      api.nvim_win_set_config(a.win, {
-        footer = text == "" and "" or { { text, group } },
-        footer_pos = "left",
-      })
+      local label
+      if text ~= "" then
+        label = { { text, group } }
+      else
+        local bottom = a.opts.border_labels and a.opts.border_labels.bottom
+        label = type(bottom) == "table" and bottom.left or false
+      end
+      a.float:set_border_labels({ bottom = { left = label } })
     end
   elseif text ~= "" then
     local rows = vim.o.lines - vim.o.cmdheight
