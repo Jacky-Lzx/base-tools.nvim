@@ -11,6 +11,36 @@ Neovim **0.12+**.
 Put this repository on `runtimepath` and require the module you need.
 Plugins that use these modules can declare `Jacky-Lzx/base-tools.nvim` as a dependency.
 
+## Input floats
+
+Open an editable scratch input with a completion callback. A confirmed value is
+a string, including the empty string. Cancellation reports nil. The callback is
+called once after cleanup. The handle exposes `cancel()` and `get_layout()`.
+
+```lua
+local input = require("base_tools.input")
+local style = { row = 3, border = "rounded" }
+local handle = input.open({
+  title = "Rename",
+  default = { "src/", { text = "old_name", selected = true }, ".lua" },
+  style = style,
+  validate = function(value)
+    return value ~= "" or "Enter a name"
+  end,
+}, function(value)
+  if value ~= nil then
+    vim.notify(value)
+  end
+end)
+```
+
+`input.float_options(style, { height = 4, title = "Authentication" })` returns
+options for `base_tools.float.open()` without opening a window. A caller can
+use the same style for a terminal or an editable input. Input controllers created
+with `input.new()` each manage one active input. A newer request in that controller
+cancels the previous request. Providers can supply their own layout and completion
+callbacks via the controller adapter.
+
 ## Error context
 
 Create one context per plugin and pass it to the modules the plugin uses.
