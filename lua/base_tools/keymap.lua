@@ -86,6 +86,7 @@ function M.install(mode, lhs, action, opts)
 
   opts = vim.tbl_extend("force", {}, opts or {})
   opts.context = nil
+  opts.desc = Context.keymap_desc(context, opts.desc)
   local buf = opts.buffer
   if buf == true or buf == 0 then
     buf = api.nvim_get_current_buf()

@@ -2,6 +2,7 @@ local M = {}
 
 ---@class base_tools.Context
 ---@field private _owner string
+---@field private _keymap_prefix? string
 local Context = {}
 Context.__index = Context
 
@@ -11,6 +12,28 @@ Context.__index = Context
 function M.new(owner)
   assert(type(owner) == "string" and owner:find("%S") and not owner:find("%c"), "Expected a plugin name")
   return setmetatable({ _owner = owner }, Context)
+end
+
+--- Derive a context with a keymap description prefix and the same diagnostic owner.
+---@param prefix string Label without a trailing separator.
+---@return base_tools.Context
+function Context:with_keymap_prefix(prefix)
+  M.check(
+    self,
+    "context.with_keymap_prefix",
+    type(prefix) == "string" and prefix:find("%S") and not prefix:find("%c"),
+    "Expected a non-empty keymap prefix"
+  )
+  return setmetatable(vim.tbl_extend("force", {}, self, { _keymap_prefix = prefix }), Context)
+end
+
+---@private
+function M.keymap_desc(context, desc)
+  local prefix = context and context._keymap_prefix
+  if prefix and type(desc) == "string" and desc ~= "" then
+    return ("[%s] %s"):format(prefix, desc)
+  end
+  return desc
 end
 
 --- Notify using the plugin name as the default title and the source.

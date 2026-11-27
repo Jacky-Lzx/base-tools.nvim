@@ -40,6 +40,7 @@ end
 function Split:map(mode, lhs, action, opts)
   Context.check(self.context, "split.map", self:valid(), "cannot map a closed split")
   local options = vim.tbl_extend("force", {}, opts or {}, { buffer = self.buf })
+  options.desc = Context.keymap_desc(self.context, options.desc)
   Context.call(self.context, "split.map", vim.keymap.set, mode, lhs, action, options)
 end
 

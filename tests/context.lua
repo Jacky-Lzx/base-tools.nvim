@@ -96,6 +96,32 @@ test.run("error contexts follow nested float resources and preserve cleanup", fu
   test.eq(original, { #api.nvim_list_wins(), #api.nvim_list_bufs() })
 end)
 
+test.run("derived contexts prefix keymap descriptions while keeping the diagnostic owner", function()
+  local api = vim.api
+  local split = require("base_tools.split")
+  local float = require("base_tools.float")
+  local derived = first:with_keymap_prefix("Files")
+  local opts = { desc = "Close" }
+  local view = split.open({ config = { split = "left", win = -1, width = 20 }, context = derived })
+  view:map({ "n", "x" }, "<F23>", "<Cmd>close<CR>", opts)
+  test.eq("[Files] Close", api.nvim_buf_get_keymap(view.buf, "n")[1].desc)
+  test.eq("[Files] Close", api.nvim_buf_get_keymap(view.buf, "x")[1].desc)
+  test.eq("Close", opts.desc)
+  view:close()
+  fails("one.nvim [split.map]: cannot map a closed split", view.map, view, "n", "<F23>", function() end)
+
+  local floating = float.open({
+    config = { relative = "editor", row = 1, col = 1, width = 20, height = 1 },
+    context = derived,
+    enter = true,
+  })
+  floating:map("n", "<F23>", function() end, opts)
+  floating:map("x", "<F23>", function() end)
+  test.eq("[Files] Close", api.nvim_buf_get_keymap(floating.buf, "n")[1].desc)
+  test.eq(nil, api.nvim_buf_get_keymap(floating.buf, "x")[1].desc)
+  floating:close()
+end)
+
 test.run("error contexts preserve asynchronous process results", function()
   local process = require("base_tools.process")
   local alpha = process.new({ context = first })

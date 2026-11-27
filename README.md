@@ -109,6 +109,12 @@ to propagate their own errors by default. Process launch errors retain their exi
 original exit code and output. The context module can be loaded independently
 of the Neovim version check.
 
+For a feature-specific keymap prefix, derive a context with
+`context:with_keymap_prefix("File tree")`. Pass that context to a split, float,
+or `keymap.install()`, and supply the action description as `desc`.
+For example, a description of `"Close"` is registered as `"[File tree] Close"`.
+Errors and notices still use the original plugin owner.
+
 ## Module lifecycle
 
 Create one lifecycle per feature and call it from the plugin's own activation points.
