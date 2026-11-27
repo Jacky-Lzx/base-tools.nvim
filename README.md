@@ -49,6 +49,29 @@ Both `input.open()` and `input.float_options()` accept `border_labels`. Use
 to label an input frame. Validation and input hints occupy `bottom.left`
 while active and restore its configured label when the feedback clears.
 
+## Choice floats
+
+Use `base_tools.select.open()` for a small list of choices. The window arranges
+choices horizontally when they fit and stacks them on narrow screens. Arrow
+keys move the selection, Enter confirms, and Esc cancels. A choice can also
+define a single-letter or digit shortcut.
+
+```lua
+local handle = require("base_tools.select").open({
+  title = "Confirm",
+  prompt = "Continue?",
+  choices = { { label = "Yes", key = "y" }, { label = "No", key = "n" } },
+  default = 2,
+}, function(index)
+  if index == 1 then
+    vim.notify("Accepted")
+  end
+end)
+```
+
+The callback receives the one-based index or nil on cancellation. It runs once,
+after cleanup. Call `handle.cancel()` to cancel programmatically.
+
 ## Local paths
 
 `base_tools.path.absolute(value, { cwd = directory })` makes a local pathname
