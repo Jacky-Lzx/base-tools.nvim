@@ -134,6 +134,7 @@ function M.new(adapter)
       and api.nvim_win_is_valid(active.win)
       and api.nvim_buf_is_valid(active.buf)
       and api.nvim_win_get_buf(active.win) == active.buf
+      and (not active.frame or active.frame:valid())
     then
       return active.win
     end
@@ -152,14 +153,23 @@ function M.new(adapter)
   end
 
   local function geometry(a)
-    local w = a.style
-    local box, edge = require("base_tools.input.layout").input(
-      w,
+    return layout.editable(
+      a.style,
       api.nvim_buf_line_count(a.buf),
       a.opts.position == "cursor" and a.source or nil,
-      true
+      a.prompt
     )
-    return box, w, edge
+  end
+
+  local function draw_prompt(a, lines)
+    local buf = a.frame.buf
+    vim.bo[buf].modifiable = true
+    api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.bo[buf].modifiable = false
+    api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+    for row, line in ipairs(lines) do
+      api.nvim_buf_set_extmark(buf, ns, row - 1, 0, { end_col = #line, hl_group = a.style.prompt_group })
+    end
   end
 
   local function update(a)
@@ -169,22 +179,40 @@ function M.new(adapter)
     if a.editing then
       a.editing.refresh(a.buf)
     end
-    local box, w, edge = geometry(a)
-    if not vim.deep_equal(box, a.geometry) then
+    local box, edge, slot = geometry(a)
+    local frame_changed = not vim.deep_equal(box, a.geometry)
+    if frame_changed then
       local changed = vim.tbl_extend("force", {}, box)
-      changed.noautocmd, changed.title = nil, box.title or ""
-      a.float:update(changed)
+      changed.noautocmd, changed.style, changed.title = nil, nil, box.title or ""
+      local frame = a.frame or a.float
+      frame:update(changed)
       a.geometry = box
     end
-    if a.winblend ~= w.winblend then
-      vim.wo[a.win].winblend, a.winblend = w.winblend, w.winblend
+    if a.frame and (frame_changed or not vim.deep_equal(slot, a.prompt_slot)) then
+      local editor = layout.editor(box, slot, a.frame.win)
+      editor.noautocmd, editor.style = nil, nil
+      a.float:update(editor)
+      draw_prompt(a, slot.lines)
+      a.prompt_slot = slot
+    end
+    local blend = a.style.winblend
+    if a.winblend ~= blend then
+      vim.wo[a.win].winblend = blend
+      if a.frame then
+        vim.wo[a.frame.win].winblend = blend
+      end
+      a.winblend = blend
     end
     if a.opts.validate or a.opts.on_change or a.opts.hints then
       require("base_tools.input.feedback").render(a, box)
     end
     a.signature = signature(a)
     -- Run only from scheduled work, never inside the decoration provider.
-    local ok = api.nvim__redraw and pcall(api.nvim__redraw, { win = a.win, valid = true, flush = true })
+    local redraw = { valid = true, flush = true }
+    if not a.frame then
+      redraw.win = a.win
+    end
+    local ok = api.nvim__redraw and pcall(api.nvim__redraw, redraw)
     if not ok then
       vim.cmd.redraw()
     end
@@ -196,6 +224,7 @@ function M.new(adapter)
     local saved = api.nvim_win_call(a.win, vim.fn.winsaveview)
     a.layout = {
       win = a.win,
+      frame_win = a.frame and a.frame.win or a.win,
       buf = a.buf,
       kind = "input",
       editable = true,
@@ -208,8 +237,8 @@ function M.new(adapter)
       outer_height = box.height + edge,
       border = { top = edge / 2, right = edge / 2, bottom = edge / 2, left = edge / 2 },
       text = {
-        row = box.row + edge / 2,
-        col = box.col + edge / 2 + (a.prompt_width or 0) - saved.leftcol,
+        row = box.row + edge / 2 + slot.row,
+        col = box.col + edge / 2 + slot.col - saved.leftcol,
       },
       cursor = { row = screen.row - 1, col = (screen.curscol or screen.col) - 1 },
     }
@@ -294,6 +323,9 @@ function M.new(adapter)
     local externally_closed = a.win and not api.nvim_win_is_valid(a.win)
     if a.float then
       pcall(a.float.close, a.float)
+    end
+    if a.frame then
+      pcall(a.frame.close, a.frame)
     end
     if a.buf and api.nvim_buf_is_valid(a.buf) then
       pcall(api.nvim_buf_delete, a.buf, { force = true })
@@ -394,30 +426,41 @@ function M.new(adapter)
       if adapter.setup_buffer then
         adapter.setup_buffer(a.buf, opts)
       end
-      local box, w = geometry(a)
-      local win_options = layout.win_options(w)
-      win_options.wrap, win_options.scrolloff, win_options.sidescrolloff = false, 0, 2
-      a.float = float.open({
-        buf = a.buf,
-        enter = true,
-        context = a.context,
-        config = box,
-        win_options = win_options,
-        border_labels = opts.border_labels,
-      })
-      a.win, a.geometry, a.winblend = a.float.win, box, w.winblend
+      local w = a.style
       local prompt = opts.prompt or ""
       if (w.border == "none" or w.border == "") and prompt == "" and type(w.title) == "string" then
         prompt = w.title .. ": "
       end
-      a.prompt_width = vim.fn.strdisplaywidth(prompt)
-      if prompt ~= "" then
-        api.nvim_buf_set_extmark(a.buf, ns, 0, 0, {
-          virt_text = { { prompt:gsub("[\r\n]", " "), w.prompt_group } },
-          virt_text_pos = "inline",
-          right_gravity = false,
+      a.prompt = vim.fn.strtrans((prompt:gsub("[\r\n]", " ")))
+      local box, _, slot = geometry(a)
+      local editor = box
+      if a.prompt ~= "" then
+        local frame_options = layout.win_options(w)
+        frame_options.wrap = false
+        a.frame = float.open({
+          context = a.context,
+          config = box,
+          win_options = frame_options,
+          border_labels = opts.border_labels,
         })
+        draw_prompt(a, slot.lines)
+        editor = layout.editor(box, slot, a.frame.win)
       end
+
+      local win_options = layout.win_options(w)
+      win_options.wrap, win_options.scrolloff, win_options.sidescrolloff = false, 0, 2
+      win_options.list = true
+      local marker = vim.fn.strdisplaywidth("…") == 1 and "…" or "<"
+      win_options.listchars = "tab:  ,precedes:" .. marker
+      a.float = float.open({
+        buf = a.buf,
+        enter = true,
+        context = a.context,
+        config = editor,
+        win_options = win_options,
+        border_labels = not a.frame and opts.border_labels or nil,
+      })
+      a.win, a.geometry, a.winblend, a.prompt_slot = a.float.win, box, w.winblend, slot
       local function later(value)
         if active == a then
           finish(a, value)
@@ -513,11 +556,22 @@ function M.new(adapter)
           later(nil)
         end,
       })
+      local windows = { tostring(a.win) }
+      if a.frame then
+        windows[#windows + 1] = tostring(a.frame.win)
+      end
       api.nvim_create_autocmd("WinClosed", {
+        group = a.group,
+        pattern = windows,
+        callback = function()
+          later(nil)
+        end,
+      })
+      api.nvim_create_autocmd("WinScrolled", {
         group = a.group,
         pattern = tostring(a.win),
         callback = function()
-          later(nil)
+          refresh(a)
         end,
       })
       api.nvim_create_autocmd({ "VimResized", "ColorScheme" }, {

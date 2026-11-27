@@ -20,6 +20,11 @@ Open an editable scratch input with a completion callback. A confirmed value is
 a string, including the empty string. Cancellation reports nil. The callback is
 called once after cleanup. The handle exposes `cancel()` and `get_layout()`.
 
+The prompt stays visible as the editable text scrolls. The left ellipsis shows
+when part of the value is outside the viewport. On narrow windows the prompt
+moves above the text when space permits. The layout's `win` is the editable
+window, and `frame_win` identifies its outer frame and border labels.
+
 ```lua
 local input = require("base_tools.input")
 local style = { row = 3, border = "rounded" }

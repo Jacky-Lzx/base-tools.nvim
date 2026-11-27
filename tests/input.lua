@@ -44,6 +44,7 @@ end)
 t.run("editable input feedback keeps other border labels and restores the original left label", function()
   local handle = input.open({
     default = "draft",
+    prompt = "Value: ",
     style = { width = 40 },
     border_labels = { bottom = { left = "Ready", right = "Esc cancel" } },
     validate = function(text)
@@ -52,7 +53,7 @@ t.run("editable input feedback keeps other border labels and restores the origin
   }, function() end)
   local function has_labels(left)
     local layout = handle:get_layout()
-    local config = layout and api.nvim_win_get_config(layout.win)
+    local config = layout and api.nvim_win_get_config(layout.frame_win)
     local footer = config and config.footer
     return footer and footer[1][1] == left and footer[#footer][1] == "Esc cancel"
   end
@@ -92,4 +93,40 @@ t.run("input handle returns layout and cancels once after cleanup", function()
     return calls == 1
   end))
   t.eq(nil, handle:get_layout())
+end)
+
+t.run("input reserves prompt space and cleans up both windows on native close", function()
+  local prompt = "编辑路径: "
+  local path = "/some/long/directory/file.lua"
+  for _, width in ipairs({ 40, 14 }) do
+    local calls = 0
+    local handle = input.open({ default = path, prompt = prompt, style = { width = width } }, function(value)
+      t.eq(nil, value)
+      calls = calls + 1
+    end)
+    assert(vim.wait(1000, function()
+      return handle:get_layout() ~= nil
+    end))
+
+    local box = handle:get_layout()
+    local editor, frame = api.nvim_win_get_config(box.win), api.nvim_win_get_config(box.frame_win)
+    local prompt_buf = api.nvim_win_get_buf(box.frame_win)
+    t.eq(false, frame.focusable)
+    t.eq(box.frame_win, editor.win)
+    t.eq({ prompt }, api.nvim_buf_get_lines(prompt_buf, 0, -1, false))
+    t.eq({ path }, api.nvim_buf_get_lines(box.buf, 0, -1, false))
+    t.eq(width == 40 and vim.fn.strdisplaywidth(prompt) or 0, editor.col)
+    t.eq(width == 40 and 0 or 1, editor.row)
+    t.eq(box.width - editor.col, editor.width)
+
+    api.nvim_win_close(box.frame_win, true)
+    assert(vim.wait(1000, function()
+      return calls == 1
+    end))
+    handle.cancel()
+    t.eq(1, calls)
+    t.eq(false, api.nvim_win_is_valid(box.win))
+    t.eq(false, api.nvim_buf_is_valid(box.buf))
+    t.eq(false, api.nvim_buf_is_valid(prompt_buf))
+  end
 end)

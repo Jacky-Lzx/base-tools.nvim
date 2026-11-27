@@ -54,7 +54,8 @@ function M.render(a, box)
         local bottom = a.opts.border_labels and a.opts.border_labels.bottom
         label = type(bottom) == "table" and bottom.left or false
       end
-      a.float:set_border_labels({ bottom = { left = label } })
+      local frame = a.frame or a.float
+      frame:set_border_labels({ bottom = { left = label } })
     end
   elseif text ~= "" then
     local rows = vim.o.lines - vim.o.cmdheight
