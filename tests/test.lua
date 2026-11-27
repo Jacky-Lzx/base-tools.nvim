@@ -1,6 +1,7 @@
 dofile("tests/context.lua")
 dofile("tests/config.lua")
 dofile("tests/text.lua")
+dofile("tests/path.lua")
 dofile("tests/buffer.lua")
 dofile("tests/footer.lua")
 dofile("tests/float.lua")

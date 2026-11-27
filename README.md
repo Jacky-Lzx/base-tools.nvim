@@ -46,6 +46,31 @@ Both `input.open()` and `input.float_options()` accept `border_labels`. Use
 to label an input frame. Validation and input hints occupy `bottom.left`
 while active and restore its configured label when the feedback clears.
 
+## Local paths
+
+`base_tools.path.absolute(value, { cwd = directory })` makes a local pathname
+absolute without expanding environment variables. It normalizes the path
+lexically first. The optional `symlinks` setting defaults to `"none"`.
+Use `"parent"` to resolve existing ancestors while preserving the last
+component, or `"all"` to resolve the last component as well when it exists.
+Nonexistent suffixes are preserved in both modes.
+
+`path.contains(root, target)` includes equality and checks directory boundaries.
+`path.remap(target, from, to)` changes the root of a contained target and
+returns an outside target unchanged. Both compare paths lexically.
+
+`path.relative(base, target)` returns the path from a base directory to a
+target. It returns `"."` for an identical path and includes `..` for targets
+outside the base. Different filesystem roots return `nil, error`.
+
+```lua
+local path = require("base_tools.path")
+path.absolute("../docs/a b.md", { cwd = "/project/src" }) -- /project/docs/a b.md
+path.contains("/project/src", "/project/src-old/a.lua") -- false
+path.remap("/project/src/a.lua", "/project/src", "/project/lib") -- /project/lib/a.lua
+path.relative("/project/src", "/project/docs/a.md") -- ../docs/a.md
+```
+
 ## Error context
 
 Create one context per plugin and pass it to the modules the plugin uses.
