@@ -11,6 +11,9 @@ Neovim **0.12+**.
 Put this repository on `runtimepath` and require the module you need.
 Plugins that use these modules can declare `Jacky-Lzx/base-tools.nvim` as a dependency.
 
+`require("base_tools").version` returns the installed base-tools.nvim version
+as a semantic version string, such as `"0.1.0"`.
+
 ## Input floats
 
 Open an editable scratch input with a completion callback. A confirmed value is
