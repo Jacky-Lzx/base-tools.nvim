@@ -400,6 +400,37 @@ owns it. A window can display another buffer with its own statusline, and the
 footer becomes visible again when its buffer returns. Attaching a new footer
 to the same window and buffer replaces the earlier one.
 
+## Splits
+
+`base_tools.split` owns a normal split and its scratch buffer. It exposes the
+window, buffer and tabpage through `view.win`, `view.buf` and `view.tab`.
+
+```lua
+local view = require("base_tools.split").open({
+  config = { split = "left", win = -1, width = 32 },
+  enter = true,
+  buf_options = { filetype = "my-panel" },
+  win_options = { winfixbuf = true, winfixwidth = true },
+  on_close = function()
+    -- Release resources owned by the feature.
+  end,
+})
+
+view:map("n", "q", function()
+  view:close()
+end, { silent = true, desc = "Close panel" })
+```
+
+Use `on_buffer(buf)` to initialize buffer metadata before displaying the
+split. `view:valid()` checks that the split still displays its scratch buffer.
+`view:map()` installs buffer-local mappings that are released with the buffer.
+The `on_close` callback runs once on explicit close, native window or tab
+closure, buffer wipeout, or rollback after a failed setup.
+
+When `view:close()` closes the last regular window in a tab, the window is
+reused with a normal empty buffer so the tab stays open. A native `:tabclose`
+follows Neovim's usual tab-closing behavior.
+
 ## Floats
 
 ```lua
