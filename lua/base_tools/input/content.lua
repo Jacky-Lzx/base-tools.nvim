@@ -53,6 +53,7 @@ function M.resolve(default)
       result.cursor = point(lines, selected.first)
     else
       result.selection = selected
+      result.keep_suffix_visible = #lines == 1 and selected.last < length
     end
   end
   return result

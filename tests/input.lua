@@ -157,6 +157,44 @@ t.run("input fills the space on its right after a long-line cursor jump", functi
   end))
 end)
 
+t.run("input keeps the suffix in view when selecting and replacing a fragment", function()
+  local prefix, stem, suffix = "/目录/" .. ("nested/"):rep(8), "privileged", ".lua"
+  local path = prefix .. stem .. suffix
+  local controller = input.new({ escape_to_normal = true })
+  local handle = controller.open({
+    prompt = "Move to: ",
+    style = { width = 80 },
+    default = { prefix, { text = stem, selected = true }, suffix },
+  }, function() end)
+  assert(vim.wait(1000, function()
+    return handle.get_layout() ~= nil
+  end))
+  local win = handle.get_layout().win
+  local width = api.nvim_win_get_width(win)
+  local view = api.nvim_win_call(win, vim.fn.winsaveview)
+  t.eq("s", api.nvim_get_mode().mode)
+  t.eq({ 1, #prefix }, api.nvim_win_get_cursor(win))
+  t.eq(vim.fn.strdisplaywidth(path) - width, view.leftcol)
+  t.eq({ path }, api.nvim_buf_get_lines(api.nvim_win_get_buf(win), 0, -1, false))
+  local new_stem = "privileged_v2"
+  local renamed = prefix .. new_stem .. suffix
+  api.nvim_feedkeys(new_stem .. vim.keycode("<Esc>"), "xt", false)
+  t.eq("n", api.nvim_get_mode().mode)
+  t.eq({ renamed }, api.nvim_buf_get_lines(api.nvim_win_get_buf(win), 0, -1, false))
+  assert(
+    vim.wait(1000, function()
+      local current = api.nvim_win_call(win, vim.fn.winsaveview)
+      return current.leftcol + width == vim.fn.strdisplaywidth(renamed)
+    end),
+    "the suffix was clipped after typing"
+  )
+  t.eq({ 1, #prefix + #new_stem - 1 }, api.nvim_win_get_cursor(win))
+  handle.cancel()
+  assert(vim.wait(1000, function()
+    return not api.nvim_win_is_valid(win)
+  end))
+end)
+
 t.run("input file completion resolves relative values against an explicit directory", function()
   local origin_cwd = vim.fn.getcwd()
   local directory = vim.fn.tempname() .. " [input] directory"

@@ -173,14 +173,29 @@ function M.new(adapter)
     end
   end
 
-  local function fit_horizontal_view(win)
+  local function fit_horizontal_view(a)
+    local win = a.win
     local width = api.nvim_win_get_width(win)
     api.nvim_win_call(win, function()
       local view = vim.fn.winsaveview()
       local cursor = vim.fn.virtcol(".")
       local last = math.max(cursor, vim.fn.virtcol("$") - 1)
+      local right = last - width
       -- A jump off-screen can recenter the cursor and scroll past the line end.
-      local leftcol = math.max(0, cursor - width, math.min(view.leftcol, last - width))
+      local leftcol = math.min(view.leftcol, right)
+      local mode = api.nvim_get_mode().mode
+      local selecting = a.initial.selection and mode == "s" and vim.fn.line("v") == vim.fn.line(".")
+      local editing = a.initial.keep_suffix_visible and (mode == "n" or mode:sub(1, 1) == "i") and vim.fn.line("$") == 1
+      if selecting or editing then
+        local first = vim.fn.virtcol(".", true)[1]
+        if selecting then
+          first = math.min(first, vim.fn.virtcol("v", true)[1])
+        end
+        -- Keep the suffix in view when it fits beside the selection or cursor,
+        -- reserving one cell for the left clipping marker.
+        leftcol = math.max(leftcol, math.min(right, first - 2))
+      end
+      leftcol = math.max(0, cursor - width, leftcol)
       if leftcol ~= view.leftcol then
         vim.fn.winrestview({ leftcol = leftcol })
       end
@@ -222,7 +237,7 @@ function M.new(adapter)
       require("base_tools.input.feedback").render(a, box)
     end
     a.signature = signature(a)
-    fit_horizontal_view(a.win)
+    fit_horizontal_view(a)
     -- Run only from scheduled work, never inside the decoration provider.
     local redraw = { valid = true, flush = true }
     if not a.frame then
@@ -557,6 +572,7 @@ function M.new(adapter)
           local mode = api.nvim_get_mode().mode
           if a.initial_started and not mode:match("^[sSvV\019\022]") then
             require("base_tools.input.content").restore(a.initial)
+            a.initial.selection = nil
           end
           validate(a, value(a))
           if api.nvim_get_current_win() == a.win and api.nvim_get_mode().mode:sub(1, 1) == "i" then
