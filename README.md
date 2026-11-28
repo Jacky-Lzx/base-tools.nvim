@@ -254,6 +254,12 @@ The caller executes the action list.
 Pass an action registry to validate action names, or leave it out for dynamic dispatch.
 Set `check_aliases = true` to reject keys that encode to the same typed sequence.
 
+Pass `defaults` in the resolver options to overlay user bindings on a default keymap.
+Each supplied key replaces its entire binding, and `false` skips the binding.
+Omit the user keymap to use the defaults alone. Without `defaults`, pass the complete keymap.
+A single named action inherits the `desc` of its action table when the binding omits a description.
+In that case the resolved record also sets `desc_inherited = true`.
+
 `install(mode, lhs, callback, opts)` installs one Lua mapping in a single mode, using the options accepted by
 `vim.keymap.set()`.
 It returns an idempotent cleanup function and the prior mapping in the same scope, if present.

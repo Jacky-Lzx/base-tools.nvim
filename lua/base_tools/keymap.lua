@@ -6,16 +6,38 @@ local M = {}
 ---@class base_tools.KeyBinding
 ---@field lhs string
 ---@field actions (string|function)[]
----@field desc? string
+---@field desc? string Custom or inherited description.
+---@field desc_inherited? boolean The description came from a single named action.
+
+---@class base_tools.KeymapResolveOptions
+---@field name? string
+---@field actions? table<string, any> Named actions. A table entry may provide a desc.
+---@field defaults? table<string, string|function|table|false> Baseline bindings to overlay by key.
+---@field check_aliases? boolean
+---@field context? base_tools.Context
+
+local function action_description(actions, registry)
+  if #actions == 1 and type(actions[1]) == "string" then
+    local action = registry and registry[actions[1]]
+    if type(action) == "table" then
+      return action.desc
+    end
+  end
+end
 
 ---Normalize a table of key bindings without installing any mappings.
----@param keymap table<string, string|function|table|false>
----@param opts? { name?: string, actions?: table<string, any>, check_aliases?: boolean, context?: base_tools.Context }
+---@param keymap? table<string, string|function|table|false> May be omitted when defaults are supplied.
+---@param opts? base_tools.KeymapResolveOptions
 ---@return base_tools.KeyBinding[]
 function M.resolve(keymap, opts)
   opts = opts or {}
   local check = Context.checker(opts.context, "keymap.resolve")
   local name = opts.name or "keymap"
+  if opts.defaults ~= nil then
+    check(type(opts.defaults) == "table", name .. " defaults must be a table")
+    check(keymap == nil or type(keymap) == "table", name .. " must be a table")
+    keymap = vim.tbl_extend("force", {}, opts.defaults, keymap or {})
+  end
   check(type(keymap) == "table", name .. " must be a table")
 
   local bindings, used = {}, {}
@@ -43,8 +65,13 @@ function M.resolve(keymap, opts)
       end
 
       check(vim.islist(actions), prefix .. " must contain a contiguous action list")
-      check(chain.desc == nil or type(chain.desc) == "string", prefix .. ".desc must be a string")
-      bindings[#bindings + 1] = { lhs = lhs, actions = actions, desc = chain.desc }
+      local desc, inherited = chain.desc, nil
+      if desc == nil then
+        desc = action_description(actions, opts.actions)
+        inherited = desc ~= nil and true or nil
+      end
+      check(desc == nil or type(desc) == "string", prefix .. ".desc must be a string")
+      bindings[#bindings + 1] = { lhs = lhs, actions = actions, desc = desc, desc_inherited = inherited }
     end
   end
 

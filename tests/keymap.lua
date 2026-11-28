@@ -19,6 +19,36 @@ test.run("base-tools.keymap resolves action chains without changing their input"
   test.eq(false, pcall(keymap.resolve, { ["<M-z>"] = "open", ["<A-z>"] = "open" }, { check_aliases = true }))
 end)
 
+test.run("base-tools.keymap overlays defaults by key and inherits action descriptions", function()
+  local defaults = { r = { "open", "close", desc = "Default chain" }, q = "close", x = "open" }
+  local overrides = { r = false, x = { "close", desc = "Override" }, ["<F2>"] = "open" }
+  local opts = {
+    defaults = defaults,
+    actions = { close = { desc = "Close" }, open = { desc = "Open" } },
+    check_aliases = true,
+  }
+  local bindings = keymap.resolve(overrides, opts)
+  test.eq({
+    { lhs = "<F2>", actions = { "open" }, desc = "Open", desc_inherited = true },
+    { lhs = "q", actions = { "close" }, desc = "Close", desc_inherited = true },
+    { lhs = "x", actions = { "close" }, desc = "Override" },
+  }, bindings)
+
+  overrides.r = { "close", desc = "New chain" }
+  bindings = keymap.resolve(overrides, opts)
+  test.eq({ lhs = "r", actions = { "close" }, desc = "New chain" }, bindings[3])
+  test.eq({ "open", "close", desc = "Default chain" }, defaults.r)
+  test.eq(keymap.resolve(defaults, { actions = opts.actions }), keymap.resolve(nil, opts))
+  test.eq(false, pcall(keymap.resolve, false, opts))
+  test.eq(
+    false,
+    pcall(keymap.resolve, { ["<M-z>"] = "open" }, {
+      defaults = { ["<A-z>"] = "close" },
+      check_aliases = true,
+    })
+  )
+end)
+
 test.run("base-tools.keymap restores only the captured mode and scope", function()
   local function original()
     return "original"
