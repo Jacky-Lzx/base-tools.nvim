@@ -13,16 +13,6 @@ local api = vim.api
 ---@field border_labels? base_tools.BorderLabels
 ---@field keymap_scope? "focus"|"buffer" Keep mappings during focus changes for dedicated buffers with "buffer".
 
----@class base_tools.FloatMapping
----@field install fun(buf: integer): fun()
----@field cleanup? fun()
-
----@class base_tools.FloatKeymaps
----@field focused boolean
----@field buf? integer
----@field events integer[]
----@field bindings base_tools.FloatMapping[]
-
 ---@class base_tools.Float
 ---@field win? integer
 ---@field buf integer
@@ -30,7 +20,7 @@ local api = vim.api
 ---@field private owned boolean
 ---@field private borrowed_win? boolean
 ---@field private border_labels? table
----@field private keymaps? base_tools.FloatKeymaps
+---@field private window? base_tools.Window
 ---@field private buffer_keymaps? boolean
 local Float = {}
 Float.__index = Float
@@ -74,89 +64,6 @@ function Float:set_border_labels(labels)
   return true
 end
 
-local function unbind(binding)
-  if binding.cleanup then
-    binding.cleanup()
-    binding.cleanup = nil
-  end
-end
-
-local function deactivate(state)
-  for _, binding in ipairs(state.bindings) do
-    unbind(binding)
-  end
-  state.buf = nil
-end
-
-local function release_keymaps(view)
-  local state = view.keymaps
-  if state then
-    view.keymaps = nil
-    deactivate(state)
-    for _, event in ipairs(state.events) do
-      api.nvim_del_autocmd(event)
-    end
-  end
-end
-
-local function refresh_keymaps(view, state)
-  local win = view.win
-  if not win or not api.nvim_win_is_valid(win) or not (state.focused or view.buffer_keymaps) then
-    return
-  end
-  local buf = api.nvim_win_get_buf(win)
-  if state.buf == buf then
-    return
-  end
-  deactivate(state)
-  state.buf = buf
-  for _, binding in ipairs(state.bindings) do
-    binding.cleanup = binding.install(buf)
-  end
-end
-
-local function watch_keymaps(view)
-  local state = { focused = api.nvim_get_current_win() == view.win, bindings = {} }
-  state.events = {
-    api.nvim_create_autocmd("WinEnter", {
-      callback = function()
-        if api.nvim_get_current_win() == view.win then
-          state.focused = true
-          refresh_keymaps(view, state)
-        end
-      end,
-    }),
-    api.nvim_create_autocmd("WinLeave", {
-      callback = function()
-        if api.nvim_get_current_win() == view.win then
-          state.focused = false
-          if not view.buffer_keymaps then
-            deactivate(state)
-          end
-        end
-      end,
-    }),
-    -- An unfocused nvim_win_set_buf() temporarily reports its target as the
-    -- current window during BufEnter. WinEnter and WinLeave track real focus.
-    api.nvim_create_autocmd("BufEnter", {
-      callback = function()
-        if api.nvim_get_current_win() == view.win then
-          refresh_keymaps(view, state)
-        end
-      end,
-    }),
-    api.nvim_create_autocmd("WinClosed", {
-      pattern = tostring(view.win),
-      callback = function()
-        release_keymaps(view)
-      end,
-    }),
-  }
-
-  view.keymaps = state
-  return state
-end
-
 --- Bind a Lua action in the displayed buffer for the selected keymap scope.
 ---@param mode string A single Neovim mode such as n or i.
 ---@param lhs string
@@ -166,42 +73,21 @@ end
 function Float:map(mode, lhs, action, opts)
   local message = self.context and "cannot map a closed float" or "base-tools.float: cannot map a closed float"
   Context.check(self.context, "float.map", self:valid(), message)
-  local keymap = require("base_tools.keymap")
-  opts = vim.tbl_extend("force", {}, opts or {})
-  local binding = {
-    install = function(buf)
-      local cleanup =
-        keymap.install(mode, lhs, action, vim.tbl_extend("force", {}, opts, { buffer = buf, context = self.context }))
-      return cleanup
-    end,
-  }
-  local state = self.keymaps or watch_keymaps(self)
-  refresh_keymaps(self, state)
-  if state.buf then
-    binding.cleanup = binding.install(state.buf)
+  if not self.window then
+    self.window = require("base_tools.window").attach(self.win, {
+      context = self.context,
+      keymap_scope = self.buffer_keymaps and "buffer" or "focus",
+    })
   end
-  state.bindings[#state.bindings + 1] = binding
-
-  return function()
-    if self.keymaps ~= state then
-      return
-    end
-    for index, candidate in ipairs(state.bindings) do
-      if candidate == binding then
-        unbind(binding)
-        table.remove(state.bindings, index)
-        if #state.bindings == 0 then
-          release_keymaps(self)
-        end
-        return
-      end
-    end
-  end
+  return self.window:map(mode, lhs, action, opts)
 end
 
 --- Close the float and release its buffer when this handle owns it.
 function Float:close()
-  release_keymaps(self)
+  if self.window then
+    self.window:detach()
+    self.window = nil
+  end
 
   if self.borrowed_win and self:valid() and self.border_labels then
     self:set_border_labels({ top = false, bottom = false })

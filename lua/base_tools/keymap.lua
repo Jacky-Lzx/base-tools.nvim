@@ -105,6 +105,7 @@ end
 ---@param opts? table Options for vim.keymap.set() and an optional base_tools.Context in context.
 ---@return fun() cleanup
 ---@return table? previous Prior mapping in the same scope, if any.
+---@return table installed Native definition of the new mapping.
 function M.install(mode, lhs, action, opts)
   local context = opts and opts.context
   local check = Context.checker(context, "keymap.install")
@@ -167,7 +168,7 @@ function M.install(mode, lhs, action, opts)
     end
   end
 
-  return cleanup, previous
+  return cleanup, previous, installed
 end
 
 return M

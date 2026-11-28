@@ -627,6 +627,28 @@ Left and right take precedence when space is tight.
 The center stays centered and may be shortened or hidden.
 An edge needs a visible horizontal border to display its labels.
 
+
+## Window and tab attachments
+
+Use `base_tools.window.attach(win, opts?)` to manage mappings and window-local
+options in an existing split or float. By default, `window:map()` installs
+mappings while the window is focused and follows changes to its buffer. Use
+`keymap_scope = "buffer"` for a dedicated buffer whose mappings should stay
+available while the window is unfocused.
+
+Use `base_tools.view.attach(tab, { on_close = callback })` to manage several
+windows in a tab. Each window can have its own options and mappings.
+
+```lua
+local view = require("base_tools.view").attach(tab)
+local pane = view:attach_window(win, { win_options = { number = true } })
+pane:map("n", "q", close_tab, { desc = "Close tab" })
+```
+
+`view:detach()` and `window:detach()` release their mappings and restore the
+previous bindings. Normal window and tab closure also clean up the attachments.
+The underlying buffers belong to the caller.
+
 ## Previews
 
 ```lua
