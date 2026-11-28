@@ -227,4 +227,35 @@ function M.open(opts, on_choice)
   return { cancel = cancel }
 end
 
+---@class base_tools.ConfirmOptions
+---@field prompt string
+---@field title? string Border title. Defaults to "Confirm".
+---@field yes_label? string Affirmative choice. Defaults to "Yes".
+---@field no_label? string Negative choice. Defaults to "No".
+---@field context? base_tools.Context
+
+--- Ask for confirmation with the negative choice selected by default.
+--- The callback receives true on acceptance or false on rejection or cancellation.
+---@param opts base_tools.ConfirmOptions
+---@param on_choice fun(accepted: boolean)
+---@return base_tools.SelectHandle
+function M.confirm(opts, on_choice)
+  local context = type(opts) == "table" and opts.context or nil
+  local check = Context.checker(context, "select.confirm")
+  check(type(opts) == "table", "Expected confirmation options")
+  check(type(on_choice) == "function", "Expected a confirmation callback")
+  return M.open({
+    context = context,
+    prompt = opts.prompt,
+    title = opts.title == nil and "Confirm" or opts.title,
+    choices = {
+      { label = opts.yes_label == nil and "Yes" or opts.yes_label, key = "y" },
+      { label = opts.no_label == nil and "No" or opts.no_label, key = "n" },
+    },
+    default = 2,
+  }, function(index)
+    on_choice(index == 1)
+  end)
+end
+
 return M

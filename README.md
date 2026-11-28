@@ -79,6 +79,13 @@ end)
 The callback receives the one-based index or nil on cancellation. It runs once,
 after cleanup. Call `handle.cancel()` to cancel programmatically.
 
+Use `base_tools.select.confirm(opts, callback)` for a binary confirmation.
+The default buttons are Yes and No, with No selected. Use `yes_label` and
+`no_label` to customize the labels. The y and n keys activate their respective
+choices, and Esc cancels. The callback receives true if accepted and false if
+rejected or cancelled. It runs once after cleanup, and the returned handle
+also supports `cancel()`.
+
 ## Local paths
 
 `base_tools.path.absolute(value, { cwd = directory })` makes a local pathname

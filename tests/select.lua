@@ -79,3 +79,33 @@ test.run("selection provides direct choice keys and rejects duplicate keys", fun
   local ok, err = pcall(select_window.open, options, function() end)
   assert(not ok and tostring(err):find("Duplicate choice key: f", 1, true))
 end)
+
+test.run("confirmation uses a safe default and reports a boolean after cleanup", function()
+  local origin = api.nvim_get_current_win()
+  for _, case in ipairs({ { "<CR>", false }, { "y", true }, { "n", false }, { "<Esc>", false } }) do
+    local result, calls = nil, 0
+    local handle = select_window.confirm({ prompt = "Continue?" }, function(accepted)
+      test.eq(origin, api.nvim_get_current_win())
+      result, calls = accepted, calls + 1
+    end)
+    local text = table.concat(api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+    assert(text:match("Yes%s+No"))
+    press(case[1])
+    test.eq(case[2], result)
+    handle.cancel()
+    test.eq(1, calls)
+  end
+
+  local result
+  select_window.confirm(
+    { prompt = "Update the require path?", yes_label = "Modify", no_label = "Cancel" },
+    function(accepted)
+      result = accepted
+    end
+  )
+  local text = table.concat(api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+  assert(text:match("Modify%s+Cancel"))
+  press("<Left>")
+  press("<CR>")
+  test.eq(true, result)
+end)
